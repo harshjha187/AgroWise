@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgroWise — IoT-Based Smart Soil Health Analysis System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F5F7FA; --panel:#FFFFFF; --line:#E5E9F0; --line-soft:#EEF1F6;
+  --text:#1F2937; --muted:#6B7280; --faint:#9CA3AF;
+  --sidebar:#111827; --sidebar-hover:#1F2937; --sidebar-line:#1F2937;
+  --sage:#10B981; --sage-dim:#D1FAE5; --sage-text:#065F46;
+  --blue:#3B82F6; --blue-dim:#DBEAFE; --blue-text:#1E40AF;
+  --purple:#8B5CF6; --purple-dim:#EDE9FE; --purple-text:#5B21B6;
+  --cyan:#06B6D4; --cyan-dim:#CFFAFE; --cyan-text:#155E75;
+  --amber:#F59E0B; --amber-dim:#FEF3C7; --amber-text:#92400E;
+  --orange:#F97316; --orange-dim:#FED7AA; --orange-text:#9A3412;
+  --red:#EF4444; --red-dim:#FEE2E2; --red-text:#991B1B;
+  --shadow:0 4px 10px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.05);
+  --shadow-lg:0 20px 45px rgba(0,0,0,.14), 0 6px 14px rgba(0,0,0,.08);
+}
+/* Dark mode — opt-in via the theme toggle (Settings page), light stays the
+   default per design.md's locked design. Same variable names, dark values;
+   the sidebar stays dark in both modes (it already was). */
+:root[data-theme="dark"]{
+  --bg:#0B1120; --panel:#131B2E; --line:#22304A; --line-soft:#1A2436;
+  --text:#E5E7EB; --muted:#9CA3AF; --faint:#6B7280;
+  --sage-dim:rgba(16,185,129,.16); --sage-text:#6EE7B7;
+  --blue-dim:rgba(59,130,246,.18); --blue-text:#93C5FD;
+  --purple-dim:rgba(139,92,246,.18); --purple-text:#C4B5FD;
+  --cyan-dim:rgba(6,182,212,.18); --cyan-text:#67E8F9;
+  --amber-dim:rgba(245,158,11,.18); --amber-text:#FCD34D;
+  --orange-dim:rgba(249,115,22,.18); --orange-text:#FDBA74;
+  --red-dim:rgba(239,68,68,.18); --red-text:#FCA5A5;
+  --shadow:0 4px 12px rgba(0,0,0,.35), 0 2px 4px rgba(0,0,0,.25);
+  --shadow-lg:0 20px 45px rgba(0,0,0,.5), 0 6px 14px rgba(0,0,0,.3);
+}
+:root[data-theme="dark"] .class-illust{background:rgba(16,185,129,.14)}
+:root[data-theme="dark"] .class-illust.moderate{background:rgba(245,158,11,.14)}
+:root[data-theme="dark"] .class-illust.barren{background:rgba(239,68,68,.14)}
+:root[data-theme="dark"] .st-ph .stat-val,
+:root[data-theme="dark"] .r-ph .reco-title,
+:root[data-theme="dark"] table.readings .col-ph{color:#93C5FD}
+:root[data-theme="dark"] .live-badge.off{background:var(--line-soft);color:var(--muted)}
+:root[data-theme="dark"] .banner{background:linear-gradient(90deg,rgba(16,185,129,.10),rgba(16,185,129,.05));border-color:rgba(16,185,129,.3)}
+:root[data-theme="dark"] .banner.warn{background:linear-gradient(90deg,rgba(245,158,11,.12),rgba(245,158,11,.05));border-color:rgba(245,158,11,.35)}
+:root[data-theme="dark"] .banner.crit{background:linear-gradient(90deg,rgba(239,68,68,.12),rgba(239,68,68,.05));border-color:rgba(239,68,68,.35)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+
+/* ============ 3D DEPTH + TILT INTERACTIONS ============ */
+.card,.stat,.live-param,.summary-tile,.reco,.alert-row,
+.action-btn,.btn-primary,.btn-secondary,.nav-item,.drawer-tab,.logout{
+  transition:transform .45s cubic-bezier(.2,.8,.3,1), box-shadow .3s ease, filter .12s;
+  will-change:transform;
+}
+.card:hover,.stat:hover,.live-param:hover,.summary-tile:hover{
+  box-shadow:var(--shadow-lg);
+}
+.card:active,.stat:active,.live-param:active,.summary-tile:active,
+.reco:active,.alert-row:active,.nav-item:active,.drawer-tab:active,.logout:active{
+  transform:scale(.97) !important;
+  transition:transform .08s ease !important;
+}
+.action-btn,.btn-primary,.btn-secondary{
+  box-shadow:0 4px 0 rgba(0,0,0,.16), 0 8px 18px rgba(0,0,0,.14);
+}
+.action-btn:active,.btn-primary:active,.btn-secondary:active{
+  transform:translateY(3px) scale(.98) !important;
+  box-shadow:0 1px 0 rgba(0,0,0,.16), 0 2px 6px rgba(0,0,0,.10) !important;
+  transition:transform .08s ease, box-shadow .08s ease !important;
+}
+@media (prefers-reduced-motion:reduce){
+  .card,.stat,.live-param,.summary-tile,.reco,.alert-row,
+  .action-btn,.btn-primary,.btn-secondary,.nav-item,.drawer-tab,.logout{ transition:none !important; transform:none !important }
+}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font-family:inherit;font-size:inherit}
+button{cursor:pointer;border:none;background:none;color:inherit}
+input[type=number]{
+  padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;
+  background:var(--panel);color:var(--text);
+}
+input:focus{outline:none;border-color:var(--sage);box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+button:focus-visible,a:focus-visible{outline:2px solid var(--sage);outline-offset:2px}
+.skip-link{position:absolute;left:-9999px;top:0;z-index:300;background:var(--sage);color:#fff;
+  padding:10px 16px;border-radius:0 0 8px 0;font-weight:600;font-size:13px}
+.skip-link:focus{left:0}
+
+/* ============ LAYOUT ============ */
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+
+/* ============ SIDEBAR ============ */
+.sidebar{
+  background:var(--sidebar);color:#E5E7EB;
+  display:flex;flex-direction:column;
+  padding:24px 16px;position:sticky;top:0;height:100vh;
+}
+.brand{display:flex;align-items:center;gap:12px;padding:0 8px 24px}
+.brand-mark{
+  width:44px;height:44px;border-radius:12px;
+  background:linear-gradient(135deg,#065F46,#10B981);
+  display:grid;place-items:center;flex:none;
+  box-shadow:0 4px 8px rgba(16,185,129,.25);
+}
+.brand-text{font-size:14px;font-weight:800;letter-spacing:.5px;line-height:1.15}
+.brand-text small{display:block;font-size:11px;font-weight:500;color:#9CA3AF;letter-spacing:.3px;margin-top:2px}
+
+.nav{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+.nav-item{
+  display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;
+  color:#9CA3AF;font-weight:500;transition:background .12s,color .12s;text-align:left;width:100%;
+}
+.nav-item:hover{background:var(--sidebar-hover);color:#F3F4F6}
+.nav-item.active{background:var(--sage);color:#fff;font-weight:600}
+.nav-item svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
+
+.device{
+  margin-top:auto;padding:16px 12px;border-top:1px solid var(--sidebar-line);
+  font-size:12px;color:#9CA3AF;
+}
+.device-title{color:var(--sage);font-weight:700;font-size:11px;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--sidebar-line)}
+.device-row{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
+.device-row b{color:#F3F4F6;font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 6px var(--sage);display:inline-block;margin-right:6px}
+.dot.off{background:var(--faint);box-shadow:none}
+.logout{
+  margin-top:16px;padding:12px;border:1px solid var(--sidebar-line);border-radius:8px;
+  display:flex;align-items:center;gap:10px;color:#9CA3AF;font-weight:500;
+}
+.logout:hover{background:var(--sidebar-hover);color:#F3F4F6}
+
+/* ============ MAIN ============ */
+.main{padding:24px 32px 40px}
+.page{display:none}
+.page.active{display:block}
+.top-bar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap}
+.title h1{font-size:24px;font-weight:700;line-height:1.2}
+.title p{color:var(--muted);margin-top:4px;font-size:14px}
+.top-meta{display:flex;align-items:center;gap:16px;color:var(--muted);font-size:13px}
+.top-meta .time{display:flex;align-items:center;gap:10px}
+.top-meta svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+.time-block{text-align:right;line-height:1.35}
+.live-badge{
+  padding:6px 14px;border-radius:99px;background:var(--sage-dim);color:var(--sage-text);
+  font-weight:600;font-size:12px;display:inline-flex;align-items:center;gap:6px;
+}
+.live-badge.off{background:#F3F4F6;color:var(--muted)}
+
+/* ============ STAT CARDS (top row) ============ */
+.stat-row{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:20px}
+.stat{
+  background:var(--panel);border-radius:12px;padding:18px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;
+}
+.stat-head{display:flex;align-items:center;gap:12px}
+.stat-icon{
+  width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:none;
+}
+.stat-icon svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2}
+.stat-name{font-size:12px;color:var(--muted);font-weight:500;line-height:1.2}
+.stat-val{font-size:26px;font-weight:700;line-height:1;margin-top:2px}
+.stat-val small{font-size:12px;color:var(--muted);font-weight:500;margin-left:4px}
+.stat-chip{
+  padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-align:center;
+}
+/* palette per param */
+.st-n  .stat-icon{background:var(--sage)}    .st-n  .stat-val{color:var(--sage-text)}
+.st-p  .stat-icon{background:var(--blue)}    .st-p  .stat-val{color:var(--blue-text)}
+.st-k  .stat-icon{background:var(--purple)}  .st-k  .stat-val{color:var(--purple-text)}
+.st-m  .stat-icon{background:var(--cyan)}    .st-m  .stat-val{color:var(--cyan-text)}
+.st-ph .stat-icon{background:#5B9BD5}         .st-ph .stat-val{color:#2E5C8A}
+.st-t  .stat-icon{background:var(--orange)}  .st-t  .stat-val{color:var(--orange-text)}
+.chip-good{background:var(--sage-dim);color:var(--sage-text)}
+.chip-warn{background:var(--amber-dim);color:var(--amber-text)}
+.chip-crit{background:var(--red-dim);color:var(--red-text)}
+.chip-info{background:var(--blue-dim);color:var(--blue-text)}
+
+/* ============ MIDDLE ROW: Score + Class + Recos ============ */
+.mid-row{display:grid;grid-template-columns:1fr 1fr 2fr;gap:16px;margin-bottom:20px}
+.card{background:var(--panel);border-radius:12px;padding:20px;box-shadow:var(--shadow)}
+.card-title{font-size:15px;font-weight:600;margin-bottom:16px}
+
+/* semi-circle gauge */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;text-align:center}
+.gauge-svg{width:100%;max-width:280px;height:auto}
+.gauge-val{font-size:36px;font-weight:700;color:var(--sage-text);margin-top:-40px}
+.gauge-val small{font-size:16px;color:var(--muted);font-weight:500}
+.gauge-status{
+  margin-top:12px;padding:6px 16px;border-radius:6px;background:var(--sage-dim);
+  color:var(--sage-text);font-weight:600;font-size:13px;
+}
+.gauge-note{color:var(--muted);font-size:13px;margin-top:12px;line-height:1.5}
+
+/* classification */
+.class-wrap{display:flex;flex-direction:column;align-items:center;text-align:center;justify-content:center;height:100%}
+.class-illust{width:110px;height:110px;border-radius:50%;background:#F0FDF4;display:grid;place-items:center;margin-bottom:12px}
+.class-badge{font-size:26px;font-weight:700;color:var(--sage);margin-bottom:8px}
+.class-badge.moderate{color:var(--amber)}
+.class-badge.barren{color:var(--red)}
+.class-illust.moderate{background:#FEF3C7}
+.class-illust.barren{background:#FEE2E2}
+.class-note{color:var(--muted);font-size:13px;line-height:1.5;max-width:220px}
+
+/* recommendations */
+.reco-list{display:flex;flex-direction:column;gap:10px;max-height:340px;overflow-y:auto;padding-right:4px}
+.reco{
+  display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:10px;
+  background:var(--line-soft);border:1px solid var(--line);
+}
+.reco-icon{
+  width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;
+}
+.reco-icon svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:2}
+.reco-body{flex:1;min-width:0}
+.reco-title{font-weight:600;font-size:13.5px;margin-bottom:2px;color:var(--text)}
+.reco-dose{font-size:12.5px;color:var(--muted);line-height:1.5}
+.reco-prio{
+  padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;flex:none;white-space:nowrap;
+  align-self:flex-start;
+}
+.prio-high{background:var(--red-dim);color:var(--red-text)}
+.prio-med{background:var(--amber-dim);color:var(--amber-text)}
+.prio-low{background:var(--sage-dim);color:var(--sage-text)}
+.prio-info{background:var(--blue-dim);color:var(--blue-text)}
+/* colored reco icons match title category */
+.r-n  .reco-icon{background:var(--sage)}   .r-n  .reco-title{color:var(--sage-text)}
+.r-p  .reco-icon{background:var(--blue)}   .r-p  .reco-title{color:var(--blue-text)}
+.r-k  .reco-icon{background:var(--purple)} .r-k  .reco-title{color:var(--purple-text)}
+.r-m  .reco-icon{background:var(--cyan)}   .r-m  .reco-title{color:var(--cyan-text)}
+.r-ph .reco-icon{background:#5B9BD5}       .r-ph .reco-title{color:#2E5C8A}
+.r-t  .reco-icon{background:var(--orange)} .r-t  .reco-title{color:var(--orange-text)}
+.r-x  .reco-icon{background:var(--red)}    .r-x  .reco-title{color:var(--red-text)}
+
+/* ============ BOTTOM ROW: Trends + Readings + Actions ============ */
+.bot-row{display:grid;grid-template-columns:2fr 1.6fr 1fr;gap:16px;margin-bottom:20px}
+.chart-box{height:270px;position:relative}
+.table-wrap{max-height:270px;overflow-y:auto}
+table.readings{width:100%;border-collapse:collapse;font-size:13px}
+table.readings th{
+  text-align:left;padding:10px 8px;color:var(--muted);font-weight:600;font-size:12px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);
+}
+table.readings td{padding:10px 8px;border-bottom:1px solid var(--line-soft)}
+table.readings tr:last-child td{border-bottom:none}
+table.readings .col-n  {color:var(--sage-text);font-weight:600}
+table.readings .col-p  {color:var(--blue-text);font-weight:600}
+table.readings .col-k  {color:var(--purple-text);font-weight:600}
+table.readings .col-m  {color:var(--cyan-text);font-weight:600}
+table.readings .col-ph {color:#2E5C8A;font-weight:600}
+table.readings .col-t  {color:var(--orange-text);font-weight:600}
+
+/* quick actions */
+.actions{display:flex;flex-direction:column;gap:10px}
+.action-btn{
+  padding:14px;border-radius:8px;color:#fff;font-weight:600;font-size:13.5px;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  transition:transform .08s,filter .12s;
+}
+.action-btn:hover{filter:brightness(1.05)}
+.action-btn:active{transform:translateY(1px)}
+.action-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+.act-blue  {background:linear-gradient(135deg,#3B82F6,#2563EB)}
+.act-teal  {background:linear-gradient(135deg,#0EA5E9,#0284C7)}
+.act-purple{background:linear-gradient(135deg,#8B5CF6,#7C3AED)}
+.act-orange{background:linear-gradient(135deg,#F97316,#EA580C)}
+.act-sage  {background:linear-gradient(135deg,#10B981,#059669)}
+.act-rose  {background:linear-gradient(135deg,#F43F5E,#E11D48)}
+
+/* status banner */
+.banner{
+  background:linear-gradient(90deg,#ECFDF5,#F0FDF4);
+  border:1px solid #A7F3D0;border-radius:12px;
+  padding:16px 20px;display:flex;align-items:center;gap:14px;
+}
+.banner-icon{
+  width:38px;height:38px;border-radius:50%;background:var(--sage);
+  display:grid;place-items:center;flex:none;
+}
+.banner-icon svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2.5}
+.banner b{color:var(--sage-text)}
+.banner span{color:var(--muted);margin-left:2px}
+.banner-illust{margin-left:auto;font-size:32px;color:var(--sage);flex:none}
+.banner.warn{background:linear-gradient(90deg,#FFFBEB,#FEF3C7);border-color:#FCD34D}
+.banner.warn .banner-icon{background:var(--amber)} .banner.warn b{color:var(--amber-text)}
+.banner.crit{background:linear-gradient(90deg,#FEF2F2,#FEE2E2);border-color:#FCA5A5}
+.banner.crit .banner-icon{background:var(--red)} .banner.crit b{color:var(--red-text)}
+
+/* ============ Live Data page ============ */
+.live-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.live-param{background:var(--panel);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.live-param .lp-name{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:10px}
+.live-param .lp-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0}
+.live-param .lp-raw{color:var(--muted);font-weight:600}
+.live-param .lp-fil{color:var(--text);font-weight:700}
+
+/* ============ Alerts page ============ */
+.alert-row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:10px;
+  background:var(--line-soft);border:1px solid var(--line);margin-bottom:10px}
+.alert-dot{width:10px;height:10px;border-radius:50%;flex:none;margin-top:5px}
+.alert-dot.crit{background:var(--red)}
+.alert-dot.warn{background:var(--amber)}
+.alert-dot.ok{background:var(--sage)}
+.alert-dot.info{background:var(--blue)}
+.alert-body{flex:1}
+.alert-msg{font-size:13.5px;font-weight:500}
+.alert-time{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+/* ============ Reports page ============ */
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.summary-tile{background:var(--panel);border-radius:12px;padding:18px;box-shadow:var(--shadow);text-align:center}
+.summary-tile .sv{font-size:28px;font-weight:700}
+.summary-tile .sl{font-size:12px;color:var(--muted);margin-top:6px}
+
+/* ============ About page ============ */
+.about-text{font-size:13.5px;line-height:1.8;color:var(--muted)}
+.about-text b{color:var(--text)}
+
+/* ============ ONBOARDING (first-run) ============ */
+.onboard-overlay{
+  position:fixed;inset:0;background:rgba(17,24,39,.55);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.onboard-overlay.hidden{display:none}
+.onboard-card{
+  background:var(--panel);border-radius:16px;padding:32px;max-width:420px;width:100%;
+  box-shadow:var(--shadow-lg);text-align:center;
+}
+.onboard-mark{
+  width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#065F46,#10B981);
+  display:grid;place-items:center;margin:0 auto 16px;box-shadow:0 4px 8px rgba(16,185,129,.25);
+}
+.onboard-card h2{font-size:20px;font-weight:800;margin-bottom:10px}
+.onboard-card p{color:var(--muted);font-size:13.5px;line-height:1.6;margin-bottom:16px}
+.onboard-steps{text-align:left;font-size:13px;color:var(--text);margin:0 0 20px;padding-left:20px;line-height:2}
+.onboard-steps code{background:var(--line-soft);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:12px}
+
+/* ============ RIGHT-SIDE DRAWER: manual entry + sim controls ============ */
+.drawer-overlay{
+  position:fixed;inset:0;background:rgba(17,24,39,.5);z-index:40;
+  opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.drawer-overlay.open{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;right:0;top:0;bottom:0;width:380px;max-width:92vw;
+  background:var(--panel);z-index:50;padding:24px;
+  box-shadow:-8px 0 24px rgba(0,0,0,.08);
+  transform:translateX(100%);transition:transform .25s cubic-bezier(.2,.8,.3,1);
+  overflow-y:auto;
+}
+.drawer.open{transform:translateX(0)}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.drawer h2{font-size:17px;font-weight:700}
+.drawer-close{width:32px;height:32px;border-radius:8px;color:var(--muted);display:grid;place-items:center}
+.drawer-close:hover{background:var(--line-soft);color:var(--text)}
+.drawer-close svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.drawer-tabs{display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--line)}
+.drawer-tab{padding:10px 16px;color:var(--muted);font-weight:600;font-size:13px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.drawer-tab.active{color:var(--sage-text);border-bottom-color:var(--sage)}
+.drawer-section{display:none}
+.drawer-section.active{display:block}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.field select{padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;background:var(--panel);color:var(--text)}
+.btn-primary{
+  width:100%;padding:12px;border-radius:8px;background:var(--sage);color:#fff;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;
+}
+.btn-primary:hover{filter:brightness(1.05)}
+.btn-secondary{
+  width:100%;padding:12px;border-radius:8px;background:var(--panel);color:var(--text);
+  border:1px solid var(--line);font-weight:600;margin-top:8px;
+}
+.hint{color:var(--muted);font-size:12px;margin-top:12px;line-height:1.5}
+.hint code{background:var(--line-soft);padding:2px 6px;border-radius:4px;font-family:monospace}
+
+/* toast */
+#toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(90px);
+  background:var(--sidebar);color:#fff;padding:12px 20px;border-radius:8px;
+  font-size:13px;font-weight:500;box-shadow:var(--shadow-lg);
+  transition:transform .25s;z-index:100;white-space:nowrap;
+}
+#toast.show{transform:translateX(-50%) translateY(0)}
+#toast:empty{visibility:hidden}
+
+/* responsive */
+@media (max-width: 1200px){
+  .stat-row{grid-template-columns:repeat(3,1fr)}
+  .mid-row{grid-template-columns:1fr 1fr}
+  .mid-row > .card:last-child{grid-column:1 / -1}
+  .bot-row{grid-template-columns:1fr 1fr}
+  .bot-row > .card:last-child{grid-column:1 / -1}
+  .live-grid{grid-template-columns:repeat(2,1fr)}
+  .summary-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width: 900px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;flex-direction:row;flex-wrap:wrap;padding:16px}
+  .brand{padding:0 8px 0 0;flex:1;min-width:200px}
+  .nav{flex-direction:row;flex-wrap:wrap;margin-top:0}
+  .nav-item{padding:8px 12px}
+  .device,.logout{display:none}
+  .main{padding:16px}
+  .stat-row{grid-template-columns:repeat(2,1fr)}
+  .mid-row,.bot-row{grid-template-columns:1fr}
+  .mid-row > .card:last-child,.bot-row > .card:last-child{grid-column:auto}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<script>
+// Applied synchronously before body paints, to avoid a flash of the wrong theme.
+try {
+  const t = localStorage.getItem('agrowise-theme');
+  if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+} catch(e){}
+</script>
+</head>
+<body>
+
+<a href="#mainContent" class="skip-link">Skip to main content</a>
+
+<div class="app">
+
+  <!-- ==================== SIDEBAR ==================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 3v7" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M12 10c0-3 2.5-4.5 5-4.5C17 8.5 15 10 12 10Z" fill="#A7F3D0"/>
+          <path d="M12 10c0-3-2.5-4.5-5-4.5C7 8.5 9 10 12 10Z" fill="#6EE7B7"/>
+          <rect x="4" y="13" width="16" height="3" rx="1" fill="#78350F"/>
+          <rect x="4" y="17" width="16" height="3" rx="1" fill="#57210A"/>
+        </svg>
+      </div>
+      <div class="brand-text">AgroWise</div>
+    </div>
+
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        <span data-i18n="nav.dashboard">Dashboard</span>
+      </button>
+      <button class="nav-item" data-page="live">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>
+        <span data-i18n="nav.live">Live Data</span>
+      </button>
+      <button class="nav-item" data-page="history">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <span data-i18n="nav.history">History</span>
+      </button>
+      <button class="nav-item" data-page="reco">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21h6M12 3a6 6 0 00-4 10.5c.7.8 1 1.5 1 2.5v2h6v-2c0-1 .3-1.7 1-2.5A6 6 0 0012 3z"/></svg>
+        <span data-i18n="nav.recommendations">Recommendations</span>
+      </button>
+      <button class="nav-item" data-page="alerts">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+        <span data-i18n="nav.alerts">Alerts</span>
+      </button>
+      <button class="nav-item" data-page="reports">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        <span data-i18n="nav.reports">Reports</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h.02a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v.02a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span data-i18n="nav.settings">Settings</span>
+      </button>
+      <button class="nav-item" data-page="about">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span data-i18n="nav.about">About</span>
+      </button>
+    </nav>
+
+    <div class="device">
+      <div class="device-title">DEVICE STATUS</div>
+      <div class="device-row"><span>Device ID</span><b id="devId">—</b></div>
+      <div class="device-row"><span>Connection</span><b id="devConn"><span class="dot"></span>WiFi</b></div>
+      <div class="device-row"><span>Status</span><b id="devStatus"><span class="dot"></span>Online</b></div>
+      <div class="device-row"><span>Last update</span><b id="devLast">—</b></div>
+    </div>
+    <button class="logout">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      Logout
+    </button>
+  </aside>
+
+  <!-- ==================== MAIN ==================== -->
+  <main class="main" id="mainContent">
+
+    <!-- top bar -->
+    <div class="top-bar">
+      <div class="title">
+        <h1>IoT-Based Smart Soil Health Analysis System</h1>
+        <p>Real-time Soil Monitoring &amp; Intelligent Analysis</p>
+      </div>
+      <div class="top-meta">
+        <div class="time">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <div class="time-block">
+            <div id="topDate">—</div>
+            <div id="topTime" style="font-weight:600;color:var(--text)">—</div>
+          </div>
+        </div>
+        <span class="live-badge" id="liveBadge"><span class="dot"></span>Live</span>
+        <button class="action-btn act-sage" id="btnEnter" style="padding:8px 14px;font-size:13px">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Manual
+        </button>
+      </div>
+    </div>
+
+    <div class="page active" data-page="dashboard">
+
+    <!-- 6 stat cards -->
+    <div class="stat-row">
+      <div class="stat st-n">
+        <div class="stat-head">
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M12 3v7M12 10c0-3 2.5-4.5 5-4.5C17 8.5 15 10 12 10Z"/><path d="M12 10c0-3-2.5-4.5-5-4.5C7 8.5 9 10 12 10Z"/></svg></div>
+          <div>
+            <div class="stat-name">Nitrogen (N)</div>
+            <div class="stat-val"><span id="valN">—</span><small>mg/kg</small></div>
+          </div>
+        </div>
+        <div class="stat-chip chip-good" id="stN">—</div>
+      </div>
+      <div class="stat st-p">
+        <div class="stat-head">
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><text x="12" y="16" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" stroke="none">P</text></svg></div>
+          <div>
+            <div class="stat-name">Phosphorus (P)</div>
+            <div class="stat-val"><span id="valP">—</span><small>mg/kg</small></div>
+          </div>
+        </div>
+        <div class="stat-chip chip-good" id="stP">—</div>
+      </div>
+      <div class="stat st-k">
+        <div class="stat-head">
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><text x="12" y="16" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" stroke="none">K</text></svg></div>
+          <div>
+            <div class="stat-name">Potassium (K)</div>
+            <div class="stat-val"><span id="valK">—</span><small>mg/kg</small></div>
+          </div>
+        </div>
+        <div class="stat-chip chip-good" id="stK">—</div>
+      </div>
+      <div class="stat st-m">
+        <div class="stat-head">
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M12 2s6 7 6 12a6 6 0 01-12 0c0-5 6-12 6-12z"/></svg></div>
+          <div>
+            <div class="stat-name">Moisture</div>
+            <div class="stat-val"><span id="valM">—</span><small>%</small></div>
+          </div>
+        </div>
+        <div class="stat-chip chip-good" id="stM">—</div>
+      </div>
+      <div class="stat st-ph">
+        <div class="stat-head">
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M10 2v6L4 20a2 2 0 002 2h12a2 2 0 002-2L14 8V2M10 2h4M9 14h6"/></svg></div>
+          <div>
+            <div class="stat-name">Soil pH</div>
+            <div class="stat-val"><span id="valPH">—</span><small>pH</small></div>
+          </div>
+        </div>
+        <div class="stat-chip chip-good" id="stPH">—</div>
+      </div>
+      <div class="stat st-t">
+        <div class="stat-head">
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M14 4a2 2 0 00-4 0v10.5a4 4 0 104 0V4z"/><circle cx="12" cy="16" r="2" fill="#fff"/></svg></div>
+          <div>
+            <div class="stat-name">Temperature</div>
+            <div class="stat-val"><span id="valT">—</span><small>°C</small></div>
+          </div>
+        </div>
+        <div class="stat-chip chip-good" id="stT">—</div>
+      </div>
+    </div>
+
+    <!-- middle row: score + classification + recommendations -->
+    <div class="mid-row">
+      <div class="card">
+        <div class="card-title">Soil Health Score</div>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 300 180">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stop-color="#EF4444"/>
+                <stop offset="35%"  stop-color="#F59E0B"/>
+                <stop offset="65%"  stop-color="#EAB308"/>
+                <stop offset="100%" stop-color="#10B981"/>
+              </linearGradient>
+            </defs>
+            <!-- background arc -->
+            <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#E5E7EB" stroke-width="18" stroke-linecap="round"/>
+            <!-- foreground colored arc -->
+            <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="url(#gaugeGrad)" stroke-width="18" stroke-linecap="round"/>
+            <!-- tick labels -->
+            <text x="30" y="172" text-anchor="middle" font-size="12" fill="#6B7280">0</text>
+            <text x="150" y="30" text-anchor="middle" font-size="12" fill="#6B7280">50</text>
+            <text x="270" y="172" text-anchor="middle" font-size="12" fill="#6B7280">100</text>
+            <!-- needle -->
+            <g id="gaugeNeedle" transform="rotate(-90 150 150)">
+              <line x1="150" y1="150" x2="150" y2="45" stroke="#1F2937" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="150" cy="150" r="8" fill="#1F2937"/>
+              <circle cx="150" cy="150" r="4" fill="#fff"/>
+            </g>
+          </svg>
+          <div class="gauge-val"><span id="gaugeVal">—</span><small>/100</small></div>
+          <div class="gauge-status" id="gaugeStatus">—</div>
+          <div class="gauge-note" id="gaugeNote">Awaiting first reading…</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Land Classification</div>
+        <div class="class-wrap">
+          <div class="class-illust" id="classIllust">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+              <path d="M12 3v7" stroke="#065F46" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M12 10c0-3 2.5-4.5 5-4.5C17 8.5 15 10 12 10Z" fill="#6EE7B7"/>
+              <path d="M12 10c0-3-2.5-4.5-5-4.5C7 8.5 9 10 12 10Z" fill="#10B981"/>
+              <rect x="4" y="13" width="16" height="3" rx="1" fill="#78350F"/>
+              <rect x="4" y="17" width="16" height="3" rx="1" fill="#57210A"/>
+            </svg>
+          </div>
+          <div class="class-badge" id="classBadge">AWAITING</div>
+          <div class="class-note" id="classNote">Data will appear after the first analysis cycle.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Recovery Recommendations</div>
+        <div class="reco-list" id="recoList">
+          <div style="color:var(--muted);text-align:center;padding:24px 0">Recommendations appear after the first reading.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- bottom row: chart + recent + actions -->
+    <div class="bot-row">
+      <div class="card">
+        <div class="card-title">Parameter Trends (last readings)</div>
+        <div class="chart-box"><canvas id="chartTrend"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recent Readings</div>
+        <div class="table-wrap">
+          <table class="readings">
+            <thead>
+              <tr>
+                <th scope="col">Time</th><th scope="col">N</th><th scope="col">P</th><th scope="col">K</th><th scope="col">M %</th><th scope="col">pH</th><th scope="col">Temp</th>
+              </tr>
+            </thead>
+            <tbody id="tblBody">
+              <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No data yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Quick Actions</div>
+        <div class="actions">
+          <button class="action-btn act-blue" id="btnCsv">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Export Data (CSV)
+          </button>
+          <button class="action-btn act-sage" id="btnPdf">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+            Generate Report (PDF)
+          </button>
+          <button class="action-btn act-purple" id="btnViewHistory">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            View Full History
+          </button>
+          <button class="action-btn act-orange" id="btnCalibrate">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h.02a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v.02a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            Calibrate Sensors
+          </button>
+          <button class="action-btn act-teal" id="btnSim">
+            <svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.9 4.9l2.83 2.83M16.27 16.27l2.83 2.83M2 12h4M18 12h4M4.9 19.1l2.83-2.83M16.27 7.73l2.83-2.83"/></svg>
+            Simulate ESP32
+          </button>
+          <button class="action-btn act-rose" id="btnManual">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Add Reading
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- status banner -->
+    <div class="banner" id="banner">
+      <div class="banner-icon">
+        <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M12 3a9 9 0 100 18 9 9 0 000-18z"/></svg>
+      </div>
+      <div>
+        <b>All systems normal.</b>
+        <span id="bannerMsg">Data is up to date and all sensors are functioning properly.</span>
+      </div>
+      <div class="banner-illust">🌱</div>
+    </div>
+
+    </div>
+    <!-- ============ LIVE DATA PAGE ============ -->
+    <div class="page" data-page="live">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Connection</div>
+        <div style="display:flex;gap:32px;flex-wrap:wrap">
+          <div><div style="font-size:12px;color:var(--muted)">Status</div><b id="liveConnBig">—</b></div>
+          <div><div style="font-size:12px;color:var(--muted)">Backend</div><b id="liveBackendUrl">—</b></div>
+          <div><div style="font-size:12px;color:var(--muted)">Last packet</div><b id="liveLastUpdate">—</b></div>
+          <div><div style="font-size:12px;color:var(--muted)">Source</div><b id="liveSource">—</b></div>
+        </div>
+      </div>
+      <div class="card-title" style="margin-bottom:12px">Raw sensor input vs. noise-filtered value</div>
+      <div class="live-grid" id="liveGrid"></div>
+    </div>
+
+    <!-- ============ HISTORY PAGE ============ -->
+    <div class="page" data-page="history">
+      <div class="card">
+        <div class="card-title">All Readings</div>
+        <div class="field" style="max-width:260px;margin-bottom:16px">
+          <label for="deviceFilter">Device</label>
+          <select id="deviceFilter"><option value="">All devices</option></select>
+        </div>
+        <div class="table-wrap" style="max-height:70vh">
+          <table class="readings">
+            <thead>
+              <tr><th scope="col">Time</th><th scope="col">Device</th><th scope="col">Source</th><th scope="col">N</th><th scope="col">P</th><th scope="col">K</th><th scope="col">M %</th><th scope="col">pH</th><th scope="col">Temp</th><th scope="col">Score</th><th scope="col">Class</th></tr>
+            </thead>
+            <tbody id="tblFull"><tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px">No data yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RECOMMENDATIONS PAGE ============ -->
+    <div class="page" data-page="reco">
+      <div class="card">
+        <div class="card-title">All Recovery Recommendations</div>
+        <div class="reco-list" id="recoListFull" style="max-height:none">
+          <div style="color:var(--muted);text-align:center;padding:24px 0">Recommendations appear after the first reading.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ ALERTS PAGE ============ -->
+    <div class="page" data-page="alerts">
+      <div class="card">
+        <div class="card-title">Recent Alerts</div>
+        <div id="alertsListFull"><div style="color:var(--muted);text-align:center;padding:24px 0">No alerts yet.</div></div>
+      </div>
+    </div>
+
+    <!-- ============ REPORTS PAGE ============ -->
+    <div class="page" data-page="reports">
+      <div class="summary-grid">
+        <div class="summary-tile"><div class="sv" id="sumTotal">—</div><div class="sl">Total Readings</div></div>
+        <div class="summary-tile"><div class="sv" id="sumAvg">—</div><div class="sl">Avg Score</div></div>
+        <div class="summary-tile"><div class="sv" id="sumFertile">—</div><div class="sl">Fertile</div></div>
+        <div class="summary-tile"><div class="sv" id="sumBarren">—</div><div class="sl">Barren</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Export</div>
+        <div class="actions">
+          <button class="action-btn act-blue" id="btnCsv2">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Export Data (CSV)
+          </button>
+          <button class="action-btn act-teal" id="btnPdf2">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+            Generate Report (PDF)
+          </button>
+          <button class="action-btn act-purple" id="btnXlsx2">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 12h16M12 4v16"/></svg>
+            Excel Report (XLSX)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SETTINGS PAGE ============ -->
+    <div class="page" data-page="settings">
+      <div class="card" style="max-width:480px">
+        <div class="card-title">Backend Connection</div>
+        <div class="field"><label for="apiBase">Backend URL</label><input id="apiBase" type="text" placeholder="http://localhost:5000"></div>
+        <div class="field"><label for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="Paste the key server.py printed on startup"></div>
+        <button class="btn-primary" id="btnReconnect">Reconnect</button>
+        <p class="hint" id="apiStatus">Checking backend…</p>
+        <p class="hint">The ESP32 firmware POSTs to <code>/api/readings</code>. No hardware? Run <code>python simulator.py</code> from the backend folder.</p>
+        <button class="btn-secondary" id="btnClear" style="margin-top:24px;color:var(--red-text);border-color:#FCA5A5">Clear all data</button>
+      </div>
+      <div class="card" style="max-width:480px">
+        <div class="card-title">Appearance</div>
+        <div class="field">
+          <label for="themeSelect">Theme</label>
+          <select id="themeSelect">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ ABOUT PAGE ============ -->
+    <div class="page" data-page="about">
+      <div class="card" style="max-width:640px">
+        <div class="card-title">About AgroWise</div>
+        <p class="about-text">
+          <b>AgroWise</b> is an IoT-based Smart Soil Health Analysis, Barren Land
+          Detection and Automated Recovery Recommendation System.<br><br>
+          Sensors (NPK, soil moisture, pH and temperature) feed raw packets into a
+          Flask + SQLite backend, which runs a validate → filter (EMA noise
+          reduction) → score → classify → recommend pipeline and stores every
+          analyzed reading and alert.<br><br>
+          This dashboard and the AgroWise Field mobile app both talk to the same
+          REST API, so any device — ESP32 firmware, the built-in simulator, or a
+          manual entry from either app — updates every connected client in
+          real time.
+        </p>
+        <button class="btn-secondary" id="btnReplayOnboarding" style="margin-top:16px">View welcome guide</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ==================== DRAWER ==================== -->
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <h2>Data Source</h2>
+    <button class="drawer-close" id="drawerClose" aria-label="Close panel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <div class="drawer-tabs">
+    <button class="drawer-tab active" data-tab="manual">Manual entry</button>
+    <button class="drawer-tab" data-tab="sim">Simulator</button>
+  </div>
+
+  <!-- Manual -->
+  <section class="drawer-section active" data-section="manual">
+    <div class="field"><label for="inN">Nitrogen (mg/kg)</label><input id="inN" type="number" step="0.1" value="85"></div>
+    <div class="field"><label for="inP">Phosphorus (mg/kg)</label><input id="inP" type="number" step="0.1" value="24"></div>
+    <div class="field"><label for="inK">Potassium (mg/kg)</label><input id="inK" type="number" step="0.1" value="150"></div>
+    <div class="field"><label for="inM">Soil Moisture (%)</label><input id="inM" type="number" step="0.1" value="28"></div>
+    <div class="field"><label for="inPH">Soil pH</label><input id="inPH" type="number" step="0.01" value="6.5"></div>
+    <div class="field"><label for="inT">Temperature (°C)</label><input id="inT" type="number" step="0.1" value="27"></div>
+    <button class="btn-primary" id="btnAddReading">Analyze reading</button>
+    <p class="hint">Sends the reading to the backend, runs the full pipeline and stores it in the SQLite database.</p>
+  </section>
+
+  <!-- Simulator -->
+  <section class="drawer-section" data-section="sim">
+    <div class="field">
+      <label for="scenarioSel">Scenario</label>
+      <select id="scenarioSel">
+        <option value="fertile">Fertile field</option>
+        <option value="moderate" selected>Moderate — needs work</option>
+        <option value="dry">Dry — low moisture</option>
+        <option value="waterlogged">Waterlogged — excess moisture</option>
+        <option value="barren">Barren land</option>
+        <option value="drift">Live drift (random walk)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="speedSel">Cycle interval</label>
+      <select id="speedSel">
+        <option value="30" selected>30 s (as per design)</option>
+        <option value="10">10 s</option>
+        <option value="3">3 s (demo)</option>
+      </select>
+    </div>
+    <button class="btn-primary" id="btnSimToggle">Start simulation</button>
+    <button class="btn-secondary" id="btnSimOnce">Send one packet</button>
+    <p class="hint">Generates realistic ESP32 packets and POSTs them to the backend — same code path as the real firmware.</p>
+  </section>
+
+</aside>
+
+<div id="toast" role="status"></div>
+
+<!-- ==================== ONBOARDING (first-run) ==================== -->
+<div class="onboard-overlay hidden" id="onboardOverlay" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
+  <div class="onboard-card">
+    <div class="onboard-mark">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+        <path d="M12 3v7" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M12 10c0-3 2.5-4.5 5-4.5C17 8.5 15 10 12 10Z" fill="#A7F3D0"/>
+        <path d="M12 10c0-3-2.5-4.5-5-4.5C7 8.5 9 10 12 10Z" fill="#6EE7B7"/>
+        <rect x="4" y="13" width="16" height="3" rx="1" fill="#78350F"/>
+        <rect x="4" y="17" width="16" height="3" rx="1" fill="#57210A"/>
+      </svg>
+    </div>
+    <h2 id="onboardTitle">Welcome to AgroWise</h2>
+    <p>Connect to your AgroWise backend to see live soil data from your ESP32 or the built-in simulator — or explore right now in demo mode, no setup required.</p>
+    <ol class="onboard-steps">
+      <li>Run <code>python server.py</code> in the <code>backend/</code> folder</li>
+      <li>Copy the API key it prints on startup</li>
+      <li>Paste the backend URL + key in Settings</li>
+    </ol>
+    <button class="btn-primary" id="btnOnboardConnect">Connect to Backend</button>
+    <button class="btn-secondary" id="btnOnboardDemo">Explore in Demo Mode</button>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   AgroWise Dashboard v2 (light theme, sidebar layout)
+   Same analysis engine + API contract as v1; just a new UI.
+   ================================================================ */
+
+/* ---------- i18n scaffold ----------
+   SCOPE NOTE: only the sidebar nav labels are wired through t() right now,
+   as a working proof of the pattern — not full-app translation coverage.
+   Converting every string in this file is a large, separate effort with
+   no real value until an actual second-language dictionary exists. To
+   extend: add a locale object below (e.g. STRINGS.hi), wire more elements
+   with data-i18n="key" + a matching key here, then call applyI18n() again
+   after switching CFG_LOCALE. No UI language switcher yet since there's
+   only one populated locale — add one once a second language lands. */
+const STRINGS = {
+  en: {
+    'nav.dashboard': 'Dashboard', 'nav.live': 'Live Data', 'nav.history': 'History',
+    'nav.recommendations': 'Recommendations', 'nav.alerts': 'Alerts', 'nav.reports': 'Reports',
+    'nav.settings': 'Settings', 'nav.about': 'About',
+  },
+};
+let CFG_LOCALE = 'en';
+function t(key){ return (STRINGS[CFG_LOCALE] && STRINGS[CFG_LOCALE][key]) || key; }
+function applyI18n(){
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+}
+const CFG = {
+  params: {
+    n:  { label:'Nitrogen',     unit:'mg/kg', min:0,   lo:80,  hi:160, max:320, clampLo:0,  clampHi:1999, w:0.15, dp:1 },
+    p:  { label:'Phosphorus',   unit:'mg/kg', min:0,   lo:20,  hi:50,  max:140, clampLo:0,  clampHi:1999, w:0.15, dp:1 },
+    k:  { label:'Potassium',    unit:'mg/kg', min:0,   lo:110, hi:250, max:500, clampLo:0,  clampHi:1999, w:0.15, dp:1 },
+    m:  { label:'Soil Moisture',unit:'%',     min:0,   lo:20,  hi:45,  max:75,  clampLo:0,  clampHi:100,  w:0.20, dp:1 },
+    ph: { label:'Soil pH',      unit:'',      min:3.5, lo:6.0, hi:7.5, max:9.5, clampLo:0,  clampHi:14,   w:0.20, dp:2 },
+    t:  { label:'Temperature',  unit:'°C',    min:2,   lo:18,  hi:32,  max:48,  clampLo:-10,clampHi:60,   w:0.15, dp:1 }
+  },
+  classes: { fertile:80, moderate:50 },
+  emaAlpha: 0.45, rampPower: 1.6,
+  maxStored: 500, pollSec: 3,
+  storageKey: 'agrowise-data-v3'
+};
+const KEYS = ['n','p','k','m','ph','t'];
+
+/* ---------- storage ---------- */
+const store = (() => {
+  return {
+    async load(){ try { const v = localStorage.getItem(CFG.storageKey); return v ? JSON.parse(v) : null; } catch(e){ return null; } },
+    async save(o){ try { localStorage.setItem(CFG.storageKey, JSON.stringify(o)); } catch(e){} },
+    async clear(){ try { localStorage.removeItem(CFG.storageKey); } catch(e){} }
+  };
+})();
+
+/* ---------- state ---------- */
+const state = {
+  readings: [], alerts: [],
+  scenario: 'moderate', intervalSec: 30, simRunning: false,
+  simTimer: null, liveTimer: null,
+  lastId: 0, driftLast: null, chart: null
+};
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const fmt = (v,dp=1) => (v===null||v===undefined||isNaN(v)) ? '—' : Number(v).toFixed(dp);
+const timeStr = ts => new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2500); }
+const LVL = { critical:'crit', warning:'warn', ok:'good', info:'info' };
+
+/* ---------- 3D mouse-tracked tilt ---------- */
+(function(){
+  const TILT_SEL = '.card, .stat, .live-param, .summary-tile, .reco, .alert-row, .action-btn, .btn-primary, .btn-secondary, .nav-item, .drawer-tab, .logout';
+  const MAX_DEG = 9;
+  let current = null;
+  function reset(el){
+    el.style.transition = 'transform .45s cubic-bezier(.2,.8,.3,1)';
+    el.style.transform = '';
+  }
+  document.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch') return;
+    const el = e.target.closest(TILT_SEL);
+    if (el !== current){
+      if (current) reset(current);
+      current = el;
+      if (el) el.style.transition = 'transform .05s linear';
+    }
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    const rx = ((0.5 - py) * MAX_DEG).toFixed(2), ry = ((px - 0.5) * MAX_DEG).toFixed(2);
+    el.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-3px)`;
+  });
+  document.documentElement.addEventListener('mouseleave', () => { if (current){ reset(current); current = null; } });
+})();
+
+/* ---------- API layer ---------- */
+const API = {
+  base: '', online: false, key: '', authError: false,
+  detectBase(){ return location.protocol.startsWith('http') ? location.origin : 'http://localhost:5000'; },
+  url(p){ return this.base.replace(/\/$/,'') + p; },
+  headers(extra){ return Object.assign({ 'X-API-Key': this.key }, extra||{}); },
+  async ping(){
+    try {
+      const r = await fetch(this.url('/api/health'), {cache:'no-store', headers:this.headers()});
+      this.authError = r.status === 401;
+      const j = await r.json();
+      this.online = r.ok && !!j.ok;
+    }
+    catch(e){ this.online = false; this.authError = false; }
+    return this.online;
+  },
+  async submit(raw, source){
+    const r = await fetch(this.url('/api/readings'), {
+      method:'POST', headers:this.headers({'Content-Type':'application/json'}),
+      body: JSON.stringify({ n:raw.n, p:raw.p, k:raw.k, m:raw.m, ph:raw.ph, temp:raw.t, source })
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP '+r.status);
+    return j;
+  },
+  async history(limit=100, deviceId=''){
+    const q = deviceId ? '&device_id='+encodeURIComponent(deviceId) : '';
+    return (await (await fetch(this.url('/api/readings?limit='+limit+q), {cache:'no-store', headers:this.headers()})).json()).readings || [];
+  },
+  async latest(){ return (await (await fetch(this.url('/api/readings/latest'), {cache:'no-store', headers:this.headers()})).json()).reading || null; },
+  async alerts(limit=30){ return (await (await fetch(this.url('/api/alerts?limit='+limit), {cache:'no-store', headers:this.headers()})).json()).alerts || []; },
+  async summary(){ return await (await fetch(this.url('/api/summary'), {cache:'no-store', headers:this.headers()})).json(); },
+  async devices(){ return (await (await fetch(this.url('/api/devices'), {cache:'no-store', headers:this.headers()})).json()).devices || []; },
+  async clear(){ await fetch(this.url('/api/readings'), { method:'DELETE', headers:this.headers() }); }
+};
+
+/* ---------- local engine (fallback) ---------- */
+function validate(raw){
+  const out = {};
+  for (const k of KEYS){
+    let v = Number(raw[k]);
+    if (raw[k]===''||raw[k]===null||raw[k]===undefined||isNaN(v)) return { ok:false, why:`${CFG.params[k].label} is missing / not a number` };
+    const c = CFG.params[k];
+    if (v < c.clampLo || v > c.clampHi) return { ok:false, why:`${c.label} out of sensor range (${v})` };
+    out[k] = v;
+  }
+  return { ok:true, val:out };
+}
+function filterNoise(raw){
+  const prev = state.readings[state.readings.length-1];
+  const f = {};
+  for (const k of KEYS) f[k] = prev ? +(CFG.emaAlpha*raw[k] + (1-CFG.emaAlpha)*prev.f[k]).toFixed(2) : +raw[k].toFixed(2);
+  return f;
+}
+function subScore(k, v){
+  const c = CFG.params[k];
+  if (v <= c.min || v >= c.max) return 0;
+  if (v >= c.lo && v <= c.hi) return 100;
+  const frac = v < c.lo ? (v - c.min)/(c.lo - c.min) : (c.max - v)/(c.max - c.hi);
+  return Math.round(Math.pow(frac, CFG.rampPower) * 100);
+}
+function computeScore(f){
+  const subs = {}; let total = 0;
+  for (const k of KEYS){ subs[k] = subScore(k, f[k]); total += subs[k]*CFG.params[k].w; }
+  return { subs, score: Math.round(total) };
+}
+function classify(score, subs){
+  if (subs.n < 35 && subs.p < 35 && subs.k < 35) return 'BARREN';
+  if (score >= CFG.classes.fertile)  return 'FERTILE';
+  if (score >= CFG.classes.moderate) return 'MODERATE';
+  return 'BARREN';
+}
+function statusOf(k, v){
+  const c = CFG.params[k];
+  if (v < c.lo) return 'Low';
+  if (v > c.hi) return 'High';
+  return 'Adequate';
+}
+function moistureStatus(m){ return m < 20 ? 'LOW' : m > 45 ? 'HIGH' : 'OPTIMAL'; }
+
+function recommend(f, subs, cls){
+  const R = [];
+  const catFor = t => t.includes('Nitrogen')?'n':t.includes('Phosphorus')?'p':t.includes('Potassium')?'k':t.includes('moisture')||t.includes('irrigation')?'m':t.includes('pH')||t.includes('cid')||t.includes('lkaline')?'ph':t.includes('emperature')?'t':'x';
+  const prioFor = s => s==='crit'?'high':s==='warn'?'med':s==='info'?'info':'low';
+
+  if (f.n < CFG.params.n.lo){
+    const dose = Math.min(110, Math.max(25, Math.round((CFG.params.n.hi - f.n)/CFG.params.n.hi * 110)));
+    R.push({ sev: subs.n<35?'crit':'warn', title:'Nitrogen is low', dose:`Apply Urea (46-0-0) ≈ ${dose} kg/acre in split doses` });
+  } else {
+    R.push({ sev:'good', title:'Maintain Nitrogen levels', dose:'Apply organic manure or urea if required' });
+  }
+  if (f.p < CFG.params.p.lo){
+    const dose = Math.min(75, Math.max(20, Math.round((CFG.params.p.hi - f.p)/CFG.params.p.hi * 75)));
+    R.push({ sev: subs.p<35?'crit':'warn', title:'Phosphorus is low', dose:`Apply DAP (Diammonium Phosphate) ≈ ${dose} kg/acre at sowing` });
+  } else {
+    R.push({ sev:'good', title:'Phosphorus is adequate', dose:'Maintain current levels' });
+  }
+  if (f.k < CFG.params.k.lo){
+    const dose = Math.min(60, Math.max(15, Math.round((CFG.params.k.hi - f.k)/CFG.params.k.hi * 60)));
+    R.push({ sev: subs.k<35?'crit':'warn', title:'Potassium is low', dose:`Apply MOP (0-0-60) ≈ ${dose} kg/acre` });
+  } else {
+    R.push({ sev:'good', title:'Potassium is adequate', dose:'Maintain current levels' });
+  }
+  if (f.m < CFG.params.m.lo){
+    const mm = Math.round(20 + Math.max(0, CFG.params.m.lo - f.m) * 1.5);
+    R.push({ sev: f.m<10?'crit':'warn', title:'Soil moisture is low — irrigate', dose:`Apply ≈ ${mm} mm/acre; target 25–35 % VWC` });
+  } else if (f.m > CFG.params.m.hi){
+    R.push({ sev:'warn', title:'Excess soil moisture — reduce irrigation', dose:'Halt irrigation for 3–5 days; inspect drainage' });
+  } else {
+    R.push({ sev:'good', title:'Moisture is at optimal level', dose:'Continue current irrigation schedule' });
+  }
+  if (f.ph < CFG.params.ph.lo){
+    const dose = Math.round(150 + (CFG.params.ph.lo - f.ph) * 180);
+    R.push({ sev: f.ph<5.2?'crit':'warn', title:'pH is acidic — apply lime', dose:`Agricultural lime ≈ ${dose} kg/acre; re-test after 3–4 weeks` });
+  } else if (f.ph > CFG.params.ph.hi){
+    const dose = Math.round(120 + (f.ph - CFG.params.ph.hi) * 160);
+    R.push({ sev: f.ph>8.6?'crit':'warn', title:'pH is alkaline — apply gypsum', dose:`Gypsum ≈ ${dose} kg/acre + organic compost` });
+  } else {
+    R.push({ sev:'good', title:'pH is slightly acidic', dose:'No action required. Ideal range: 6.0 – 7.5' });
+  }
+  if (f.t < CFG.params.t.lo || f.t > CFG.params.t.hi){
+    R.push({ sev:'info', title:'Temperature is outside ideal range', dose:f.t>32?'Mulch and irrigate early morning / evening':'Delay sowing; use raised beds' });
+  } else {
+    R.push({ sev:'good', title:'Temperature is normal', dose:'Suitable for most crops' });
+  }
+  if (cls === 'BARREN'){
+    R.unshift({ sev:'crit', title:'Barren land — structured recovery plan',
+      dose:'Compost 2 t/acre → green manure 40–45 d → staged NPK → light irrigation → retest in 30 days' });
+  }
+  return R.map(r => ({ ...r, cat: catFor(r.title), prio: prioFor(r.sev) }));
+}
+function buildAlerts(f, subs, cls, prevCls){
+  const ts = Date.now();
+  const arr = [];
+  const add = (lvl,msg)=> arr.unshift({ts,lvl,msg});
+  for (const k of ['n','p','k']){
+    if (f[k] < CFG.params[k].lo) add(subs[k]<35?'crit':'warn', `Low ${CFG.params[k].label} — ${fmt(f[k],1)} mg/kg`);
+  }
+  if (f.m < 20) add(f.m<10?'crit':'warn', `Low soil moisture ${fmt(f.m,1)} % — irrigation recommended`);
+  if (f.m > 45) add('warn', `High soil moisture ${fmt(f.m,1)} % — reduce irrigation`);
+  if (f.ph < CFG.params.ph.lo) add('warn', `Acidic soil — pH ${fmt(f.ph,2)}`);
+  if (f.ph > CFG.params.ph.hi) add('warn', `Alkaline soil — pH ${fmt(f.ph,2)}`);
+  if (cls !== prevCls) add(cls==='BARREN'?'crit':cls==='FERTILE'?'good':'warn', `Land classified ${cls}`);
+  state.alerts = [...arr, ...state.alerts].slice(0, 50);
+}
+
+/* ---------- integrate/submit ---------- */
+function integrate(reading){
+  if (reading.id){
+    if (reading.id <= state.lastId) return false;
+    state.lastId = reading.id;
+  }
+  if (!reading.moisture_status) reading.moisture_status = moistureStatus(reading.f.m);
+  state.readings.push(reading);
+  if (state.readings.length > CFG.maxStored) state.readings = state.readings.slice(-CFG.maxStored);
+  renderAll();
+  return true;
+}
+async function submitReading(raw, source){
+  if (API.online){
+    try {
+      const res = await API.submit(raw, source);
+      integrate(res.reading);
+      state.alerts = (await API.alerts(30)).map(a=>({ts:a.ts, lvl:LVL[a.level]||'warn', msg:a.message}));
+      renderBanner();
+      return;
+    } catch(e){
+      if (String(e.message).includes('out of sensor range') || String(e.message).includes('not a number')){
+        toast('Reading rejected: '+e.message); return;
+      }
+      if (String(e.message).toLowerCase().includes('unauthorized')){
+        toast('Invalid API key — check Settings'); return;
+      }
+      API.online = false; refreshConnUI();
+      toast('Backend lost — switched to local mode');
+    }
+  }
+  const v = validate(raw);
+  if (!v.ok){ toast('Reading rejected: '+v.why); return; }
+  const f = filterNoise(v.val);
+  const { subs, score } = computeScore(f);
+  const prev = state.readings[state.readings.length-1];
+  const cls = classify(score, subs);
+  const reading = { ts:Date.now(), raw:v.val, f, subs, score, cls, moisture_status:moistureStatus(f.m), source, device_id:'local' };
+  buildAlerts(f, subs, cls, prev?prev.cls:null);
+  integrate(reading);
+  persist();
+}
+async function persist(){
+  await store.save({
+    readings: API.online ? [] : state.readings.slice(-200),
+    alerts: API.online ? [] : state.alerts,
+    settings: { scenario: state.scenario, intervalSec: state.intervalSec, apiBase: API.base, apiKey: API.key }
+  });
+}
+
+/* ---------- live poll & simulator ---------- */
+function stopAllTimers(){ clearInterval(state.simTimer); clearInterval(state.liveTimer); state.simRunning=false; $('btnSimToggle').textContent='Start simulation'; }
+function startLive(){
+  stopAllTimers();
+  const tick = async () => {
+    if (!API.online){ if (!(await API.ping())){ refreshConnUI(); return; } refreshConnUI(); }
+    try {
+      const latest = await API.latest();
+      if (latest && integrate(latest)){
+        state.alerts = (await API.alerts(30)).map(a=>({ts:a.ts, lvl:LVL[a.level]||'warn', msg:a.message}));
+        renderBanner();
+      }
+    } catch(e){ API.online=false; refreshConnUI(); }
+  };
+  tick();
+  state.liveTimer = setInterval(tick, CFG.pollSec*1000);
+}
+
+const SCN = {
+  fertile:     { n:[122,18], p:[34,6],  k:[190,26], m:[32,4.5], ph:[6.8,.22], t:[26,2.4] },
+  moderate:    { n:[55,10],  p:[14,3],  k:[95,15],  m:[18,3.5], ph:[5.7,.25], t:[33.5,2.5] },
+  dry:         { n:[95,12],  p:[26,4],  k:[160,18], m:[10,2.5], ph:[6.6,.20], t:[34,2.4] },
+  waterlogged: { n:[110,14], p:[30,5],  k:[170,20], m:[62,4.5], ph:[6.4,.25], t:[24,2] },
+  barren:      { n:[22,8],   p:[6,2.4], k:[48,13],  m:[8,3],    ph:[8.4,.3],  t:[39,3.2] }
+};
+const jitter = amp => ((Math.random()+Math.random()+Math.random())-1.5)/1.5*amp;
+function simPacket(){
+  if (state.scenario === 'drift'){
+    const base = state.driftLast || { n:70, p:18, k:110, m:22, ph:6.2, t:28 };
+    const nx = {
+      n: Math.max(2, base.n + jitter(9)), p: Math.max(1, base.p + jitter(2.4)),
+      k: Math.max(5, base.k + jitter(11)),
+      m: Math.min(95, Math.max(0, base.m + jitter(3))),
+      ph: Math.min(9.6, Math.max(3.8, base.ph + jitter(0.14))),
+      t: Math.min(48, Math.max(6, base.t + jitter(1.1)))
+    };
+    state.driftLast = nx; return nx;
+  }
+  const s = SCN[state.scenario];
+  return {
+    n: Math.max(1, s.n[0]+jitter(s.n[1])), p: Math.max(1, s.p[0]+jitter(s.p[1])),
+    k: Math.max(2, s.k[0]+jitter(s.k[1])),
+    m: Math.min(95, Math.max(0, s.m[0]+jitter(s.m[1]))),
+    ph: s.ph[0]+jitter(s.ph[1]), t: s.t[0]+jitter(s.t[1])
+  };
+}
+function startSim(){
+  stopAllTimers();
+  state.simRunning = true; $('btnSimToggle').textContent = 'Stop simulation';
+  const tick = () => submitReading(simPacket(), 'SIM');
+  tick();
+  state.simTimer = setInterval(tick, state.intervalSec*1000);
+}
+
+/* ================================================================
+   RENDERING
+   ================================================================ */
+function refreshConnUI(){
+  const online = API.online;
+  $('liveBadge').className = 'live-badge' + (online?'':' off');
+  $('liveBadge').innerHTML = `<span class="dot ${online?'':'off'}"></span>${online?'Live':'Offline'}`;
+  $('devConn').innerHTML = `<span class="dot ${online?'':'off'}"></span>${online?'WiFi':'Local'}`;
+  $('devStatus').innerHTML = `<span class="dot ${online?'':'off'}"></span>${online?'Online':'Offline'}`;
+  $('apiStatus').textContent = online ? ('Connected — '+API.base)
+    : (API.authError ? 'Invalid or missing API key — check the key in this page against server.py\'s startup output.' : ('Backend unreachable at '+API.base));
+}
+
+const STATUS_CHIP = {
+  'Adequate':'chip-good','Low':'chip-warn','High':'chip-crit',
+  'Normal':'chip-good','Slightly Acidic':'chip-info','Slightly Alkaline':'chip-info',
+  'Optimal':'chip-good'
+};
+
+function chipLabel(k, v){
+  if (k === 'ph'){
+    if (v < 6.0) return v < 5.2 ? 'Very Acidic' : 'Slightly Acidic';
+    if (v > 7.5) return v > 8.6 ? 'Very Alkaline' : 'Slightly Alkaline';
+    return 'Neutral';
+  }
+  if (k === 't'){
+    if (v < CFG.params.t.lo) return 'Cold';
+    if (v > CFG.params.t.hi) return 'Hot';
+    return 'Normal';
+  }
+  if (k === 'm'){
+    if (v < CFG.params.m.lo) return v < 10 ? 'Very Dry' : 'Low';
+    if (v > CFG.params.m.hi) return 'High';
+    return 'Optimal';
+  }
+  return statusOf(k, v);
+}
+function chipClass(k, v){
+  const c = CFG.params[k];
+  if (k === 'ph'){
+    if (v < 5.2 || v > 8.6) return 'chip-crit';
+    if (v < 6.0 || v > 7.5) return 'chip-info';
+    return 'chip-good';
+  }
+  if (v < c.lo || v > c.hi){
+    if (k === 't' || k === 'm') return v < c.min+2 || v > c.max-4 ? 'chip-crit' : 'chip-warn';
+    return 'chip-warn';
+  }
+  return 'chip-good';
+}
+
+function renderStats(r){
+  const map = { n:['valN','stN',1], p:['valP','stP',1], k:['valK','stK',1], m:['valM','stM',1], ph:['valPH','stPH',2], t:['valT','stT',1] };
+  for (const k of KEYS){
+    const [vi,ci,dp] = map[k];
+    $(vi).textContent = fmt(r.f[k], dp);
+    const ch = $(ci);
+    ch.textContent = chipLabel(k, r.f[k]);
+    ch.className = 'stat-chip ' + chipClass(k, r.f[k]);
+  }
+}
+
+function renderGauge(r){
+  $('gaugeVal').textContent = r.score;
+  // needle rotation: -90deg at 0, +90deg at 100
+  const deg = -90 + (r.score/100) * 180;
+  $('gaugeNeedle').setAttribute('transform', `rotate(${deg} 150 150)`);
+  const badge = $('gaugeStatus');
+  const gv = $('gaugeVal');
+  if (r.score >= 80){ badge.textContent='Excellent'; badge.className='gauge-status'; badge.style.background='var(--sage-dim)'; badge.style.color='var(--sage-text)'; gv.style.color='var(--sage-text)';
+    $('gaugeNote').textContent='The soil is in excellent condition. Continue current practices.'; }
+  else if (r.score >= 65){ badge.textContent='Good'; badge.className='gauge-status'; badge.style.background='var(--sage-dim)'; badge.style.color='var(--sage-text)'; gv.style.color='var(--sage-text)';
+    $('gaugeNote').textContent='The soil is in good condition but can be improved further for better productivity.'; }
+  else if (r.score >= 50){ badge.textContent='Fair'; badge.className='gauge-status'; badge.style.background='var(--amber-dim)'; badge.style.color='var(--amber-text)'; gv.style.color='var(--amber-text)';
+    $('gaugeNote').textContent='The soil needs attention. Follow the recovery recommendations below.'; }
+  else { badge.textContent='Poor'; badge.className='gauge-status'; badge.style.background='var(--red-dim)'; badge.style.color='var(--red-text)'; gv.style.color='var(--red-text)';
+    $('gaugeNote').textContent='Soil health is critical. Immediate action required.'; }
+}
+
+function renderClass(r){
+  const badge = $('classBadge');
+  const illust = $('classIllust');
+  const note = $('classNote');
+  badge.textContent = r.cls === 'FERTILE' ? 'Fertile' : r.cls === 'MODERATE' ? 'Moderate' : 'Barren';
+  badge.className = 'class-badge' + (r.cls==='MODERATE'?' moderate':r.cls==='BARREN'?' barren':'');
+  illust.className = 'class-illust' + (r.cls==='MODERATE'?' moderate':r.cls==='BARREN'?' barren':'');
+  if (r.cls === 'FERTILE') note.textContent = 'Soil quality is excellent. Nutrients are balanced and conditions are ideal for most crops.';
+  else if (r.cls === 'MODERATE') note.textContent = 'Soil quality is moderate. Some nutrients are low. Follow the recommendations to improve soil health.';
+  else note.textContent = 'Soil is barren. Multiple parameters are critical. Apply the structured recovery plan immediately.';
+}
+
+function renderRecos(r){
+  const items = recommend(r.f, r.subs, r.cls);
+  ['recoList', 'recoListFull'].forEach(targetId => {
+    const list = $(targetId);
+    if (!list) return;
+    list.innerHTML = '';
+    items.forEach(x => {
+      const el = document.createElement('div');
+      el.className = 'reco r-'+x.cat;
+      const prioTxt = x.prio==='high'?'High Priority':x.prio==='med'?'Medium Priority':x.prio==='info'?'Info':'Low Priority';
+      const prioCls = 'prio-'+x.prio;
+      const iconLetter = x.cat==='n'?'N':x.cat==='p'?'P':x.cat==='k'?'K':x.cat==='m'?'💧':x.cat==='ph'?'⚗':x.cat==='t'?'🌡':'!';
+      el.innerHTML = `
+        <div class="reco-icon"><span style="color:#fff;font-weight:700;font-size:14px">${iconLetter}</span></div>
+        <div class="reco-body">
+          <div class="reco-title">${x.title}</div>
+          <div class="reco-dose">${x.dose}</div>
+        </div>
+        <span class="reco-prio ${prioCls}">${prioTxt}</span>`;
+      list.appendChild(el);
+    });
+  });
+}
+
+function renderTable(){
+  const tb = $('tblBody');
+  const rows = state.readings.slice(-6).reverse();
+  if (!rows.length){ tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No data yet.</td></tr>'; return; }
+  tb.innerHTML = '';
+  for (const r of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:var(--muted)">${timeStr(r.ts)}</td>
+      <td class="col-n">${fmt(r.f.n,0)}</td>
+      <td class="col-p">${fmt(r.f.p,0)}</td>
+      <td class="col-k">${fmt(r.f.k,0)}</td>
+      <td class="col-m">${fmt(r.f.m,0)}</td>
+      <td class="col-ph">${fmt(r.f.ph,1)}</td>
+      <td class="col-t">${fmt(r.f.t,1)}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+function initChart(){
+  const ctx = $('chartTrend').getContext('2d');
+  state.chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label:'Nitrogen',   data:[], borderColor:'#10B981', backgroundColor:'#10B98122', tension:.35, borderWidth:2, pointRadius:3 },
+      { label:'Phosphorus', data:[], borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.35, borderWidth:2, pointRadius:3 },
+      { label:'Potassium',  data:[], borderColor:'#8B5CF6', backgroundColor:'#8B5CF622', tension:.35, borderWidth:2, pointRadius:3 },
+      { label:'Moisture %', data:[], borderColor:'#06B6D4', backgroundColor:'#06B6D422', tension:.35, borderWidth:2, pointRadius:3 },
+      { label:'Soil pH',    data:[], borderColor:'#5B9BD5', backgroundColor:'#5B9BD522', tension:.35, borderWidth:2, pointRadius:3, yAxisID:'y1' }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:{duration:400},
+      interaction:{mode:'index', intersect:false},
+      plugins:{ legend:{ position:'top', labels:{ color:'#6B7280', font:{size:11}, boxWidth:12, boxHeight:2, padding:12 } } },
+      scales:{
+        x:{ ticks:{color:'#9CA3AF', font:{size:10}, maxTicksLimit:8}, grid:{color:'#F3F4F6'} },
+        y:{ ticks:{color:'#9CA3AF', font:{size:10}}, grid:{color:'#F3F4F6'} },
+        y1:{ position:'right', min:0, max:14, ticks:{color:'#9CA3AF', font:{size:10}}, grid:{drawOnChartArea:false} }
+      }
+    }
+  });
+}
+function renderChart(){
+  const rows = state.readings.slice(-30);
+  state.chart.data.labels = rows.map(r=>timeStr(r.ts));
+  state.chart.data.datasets[0].data = rows.map(r=>r.f.n);
+  state.chart.data.datasets[1].data = rows.map(r=>r.f.p);
+  state.chart.data.datasets[2].data = rows.map(r=>r.f.k);
+  state.chart.data.datasets[3].data = rows.map(r=>r.f.m);
+  state.chart.data.datasets[4].data = rows.map(r=>r.f.ph);
+  state.chart.update('none');
+}
+
+function renderBanner(){
+  const b = $('banner');
+  const msg = $('bannerMsg');
+  const latest = state.readings[state.readings.length-1];
+  const crit = state.alerts.filter(a=>a.lvl==='crit').length;
+  const warn = state.alerts.filter(a=>a.lvl==='warn').length;
+  if (crit){ b.className='banner crit'; b.querySelector('b').textContent='Critical alerts detected.'; msg.textContent = `${crit} critical issue${crit>1?'s':''} require immediate attention.`; }
+  else if (warn){ b.className='banner warn'; b.querySelector('b').textContent='Attention needed.'; msg.textContent = `${warn} warning${warn>1?'s':''} — review recommendations.`; }
+  else if (latest){ b.className='banner'; b.querySelector('b').textContent='All systems normal.'; msg.textContent = 'Data is up to date and all sensors are functioning properly.'; }
+  else { b.className='banner'; b.querySelector('b').textContent='Awaiting data.'; msg.textContent = 'No readings received yet.'; }
+}
+
+function renderTopTime(){
+  const now = new Date();
+  $('topDate').textContent = now.toLocaleDateString([], {month:'long', day:'numeric', year:'numeric'});
+  $('topTime').textContent = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const latest = state.readings[state.readings.length-1];
+  $('devLast').textContent = latest ? timeStr(latest.ts) : '—';
+  $('devId').textContent = latest ? (latest.device_id || 'default') : '—';
+}
+
+function renderAll(){
+  const r = state.readings[state.readings.length-1];
+  if (r){ renderStats(r); renderGauge(r); renderClass(r); renderRecos(r); renderLive(r); }
+  renderTable(); renderHistoryFull(); renderChart(); renderBanner(); renderAlertsFull(); renderTopTime();
+}
+
+function renderLive(r){
+  $('liveConnBig').textContent = API.online ? 'LIVE' : 'OFFLINE';
+  $('liveBackendUrl').textContent = API.base || '(local mode)';
+  $('liveLastUpdate').textContent = timeStr(r.ts);
+  $('liveSource').textContent = r.source || '—';
+  const grid = $('liveGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (const k of KEYS){
+    const c = CFG.params[k];
+    const div = document.createElement('div');
+    div.className = 'live-param';
+    div.innerHTML = `<div class="lp-name">${c.label}</div>
+      <div class="lp-row"><span>Raw</span><b class="lp-raw">${fmt(r.raw[k], c.dp)}${c.unit?' '+c.unit:''}</b></div>
+      <div class="lp-row"><span>Filtered</span><b class="lp-fil">${fmt(r.f[k], c.dp)}${c.unit?' '+c.unit:''}</b></div>`;
+    grid.appendChild(div);
+  }
+}
+
+function renderHistoryFull(){
+  const tb = $('tblFull');
+  if (!tb) return;
+  const filterVal = $('deviceFilter') ? $('deviceFilter').value : '';
+  let rows = state.readings.slice(-150).reverse();
+  if (filterVal) rows = rows.filter(r => (r.device_id||'default') === filterVal);
+  if (!rows.length){ tb.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px">No data yet.</td></tr>'; return; }
+  tb.innerHTML = '';
+  for (const r of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:var(--muted)">${timeStr(r.ts)}</td>
+      <td>${r.device_id||'—'}</td>
+      <td>${r.source||'—'}</td>
+      <td class="col-n">${fmt(r.f.n,0)}</td>
+      <td class="col-p">${fmt(r.f.p,0)}</td>
+      <td class="col-k">${fmt(r.f.k,0)}</td>
+      <td class="col-m">${fmt(r.f.m,0)}</td>
+      <td class="col-ph">${fmt(r.f.ph,1)}</td>
+      <td class="col-t">${fmt(r.f.t,1)}</td>
+      <td>${r.score}</td>
+      <td>${r.cls}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+function renderDeviceFilterOptions(devices){
+  const sel = $('deviceFilter');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All devices</option>' +
+    devices.map(d => `<option value="${d}">${d}</option>`).join('');
+  if (devices.includes(current)) sel.value = current;
+}
+
+function renderAlertsFull(){
+  const list = $('alertsListFull');
+  if (!list) return;
+  if (!state.alerts.length){ list.innerHTML = '<div style="color:var(--muted);text-align:center;padding:24px 0">No alerts yet.</div>'; return; }
+  list.innerHTML = '';
+  state.alerts.forEach(a=>{
+    const el = document.createElement('div');
+    el.className = 'alert-row';
+    el.innerHTML = `<span class="alert-dot ${a.lvl}"></span>
+      <div class="alert-body">
+        <div class="alert-msg">${a.msg}</div>
+        <div class="alert-time">${timeStr(a.ts)}</div>
+      </div>`;
+    list.appendChild(el);
+  });
+}
+
+async function loadSummary(){
+  if (!API.online) return;
+  try {
+    const s = await API.summary();
+    $('sumTotal').textContent = s.total_readings ?? '—';
+    $('sumAvg').textContent = s.avg_score ?? '—';
+    $('sumFertile').textContent = (s.class_counts && s.class_counts.FERTILE) ?? 0;
+    $('sumBarren').textContent = (s.class_counts && s.class_counts.BARREN) ?? 0;
+  } catch(e){}
+}
+
+/* ---------- exports ---------- */
+function fname(ext){ return 'AgroWise_Report_' + new Date().toISOString().slice(0,10) + '.' + ext; }
+function download(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000); }
+function exportCSV(){
+  if (!state.readings.length) return toast('No data to export yet');
+  const NL = String.fromCharCode(10);
+  let s = 'timestamp,source,N_raw,P_raw,K_raw,moisture_raw,pH_raw,temp_raw,N,P,K,moisture_pct,pH,temp,score,classification,moisture_status' + NL;
+  for (const r of state.readings){
+    s += [new Date(r.ts).toISOString(), r.source||'', r.raw.n, r.raw.p, r.raw.k, r.raw.m, r.raw.ph, r.raw.t,
+          r.f.n, r.f.p, r.f.k, r.f.m, r.f.ph, r.f.t, r.score, r.cls, r.moisture_status||''].join(',') + NL;
+  }
+  download(new Blob([s],{type:'text/csv'}), fname('csv'));
+  toast('CSV downloaded');
+}
+function exportXLSX(){
+  if (!state.readings.length) return toast('No data to export yet');
+  const wb = XLSX.utils.book_new();
+  const rows = state.readings.map(r=>({
+    Time:new Date(r.ts).toLocaleString(), Source:r.source||'', N:r.f.n, P:r.f.p, K:r.f.k, 'Moisture %':r.f.m, pH:r.f.ph, 'Temp °C':r.f.t,
+    Score:r.score, Classification:r.cls, 'Moisture Status':r.moisture_status||''
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Readings');
+  XLSX.writeFile(wb, fname('xlsx'));
+  toast('Excel report downloaded');
+}
+function exportPDF(){
+  if (!state.readings.length) return toast('No data to export yet');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const last = state.readings[state.readings.length-1];
+  doc.setFillColor(17,24,39); doc.rect(0,0,210,32,'F');
+  doc.setTextColor(16,185,129); doc.setFontSize(16); doc.setFont('helvetica','bold');
+  doc.text('AgroWise — Soil Health Analysis Report', 14, 14);
+  doc.setTextColor(200); doc.setFontSize(9); doc.setFont('helvetica','normal');
+  doc.text('IoT-Based Smart Soil Health Analysis System', 14, 21);
+  doc.text('Generated: '+new Date().toLocaleString(), 14, 27);
+  doc.setTextColor(40); doc.setFontSize(12); doc.setFont('helvetica','bold');
+  doc.text('Soil Health Score: '+last.score+' / 100   |   Classification: '+last.cls, 14, 42);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.autoTable({ startY: 50,
+    head: [['Parameter','Value','Optimal band','Status','Sub-score']],
+    body: KEYS.map(k=>{
+      const c = CFG.params[k];
+      return [c.label, fmt(last.f[k],c.dp)+' '+c.unit, c.lo+'–'+c.hi+' '+c.unit, chipLabel(k, last.f[k]), last.subs[k]+' /100'];
+    }),
+    styles:{fontSize:9}, headStyles:{fillColor:[16,185,129]}
+  });
+  let y = doc.lastAutoTable.finalY + 8;
+  doc.setFont('helvetica','bold'); doc.text('Recovery Recommendations', 14, y); y += 5;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  recommend(last.f, last.subs, last.cls).forEach((x,i)=>{
+    const lines = doc.splitTextToSize((i+1)+'. '+x.title+' — '+x.dose, 182);
+    if (y + lines.length*4 > 282){ doc.addPage(); y = 16; }
+    doc.text(lines, 14, y); y += lines.length*4 + 2;
+  });
+  doc.autoTable({ startY: y+4,
+    head: [['Time','N','P','K','M %','pH','Temp','Score','Class']],
+    body: state.readings.slice(-25).reverse().map(r=>[
+      new Date(r.ts).toLocaleTimeString(), fmt(r.f.n,1), fmt(r.f.p,1), fmt(r.f.k,1), fmt(r.f.m,1), fmt(r.f.ph,2), fmt(r.f.t,1), r.score, r.cls
+    ]),
+    styles:{fontSize:8}, headStyles:{fillColor:[16,185,129]}
+  });
+  doc.save(fname('pdf'));
+  toast('PDF report downloaded');
+}
+
+/* ---------- drawer ---------- */
+function openDrawer(tab){
+  $('drawer').classList.add('open');
+  $('drawerOverlay').classList.add('open');
+  if (tab) switchDrawerTab(tab);
+}
+function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerOverlay').classList.remove('open'); }
+document.addEventListener('keydown', e=>{
+  if (e.key !== 'Escape') return;
+  if ($('drawer').classList.contains('open')) closeDrawer();
+  if (!$('onboardOverlay').classList.contains('hidden')) dismissOnboarding();
+});
+function switchDrawerTab(tab){
+  document.querySelectorAll('.drawer-tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
+  document.querySelectorAll('.drawer-section').forEach(s=>s.classList.toggle('active', s.dataset.section===tab));
+}
+
+async function checkBackend(showToast){
+  API.base = ($('apiBase').value.trim() || API.detectBase()).replace(/\/$/,'');
+  $('apiBase').value = API.base;
+  API.key = $('apiKey').value.trim();
+  const was = API.online;
+  await API.ping();
+  refreshConnUI();
+  if (API.online && !was){
+    try {
+      state.readings = await API.history(100);
+      state.lastId = state.readings.length ? (state.readings[state.readings.length-1].id||0) : 0;
+      state.alerts = (await API.alerts(30)).map(a=>({ts:a.ts, lvl:LVL[a.level]||'warn', msg:a.message}));
+      renderAll();
+      if (showToast) toast('Connected — loaded '+state.readings.length+' readings');
+    } catch(e){}
+  } else if (!API.online && showToast){
+    toast(API.authError ? 'Invalid API key — check Settings' : 'Backend unreachable — running in local mode');
+  }
+  persist();
+  return API.online;
+}
+
+/* ---------- wiring ---------- */
+document.querySelectorAll('.drawer-tab').forEach(b=>b.addEventListener('click',()=>switchDrawerTab(b.dataset.tab)));
+$('drawerClose').addEventListener('click', closeDrawer);
+$('drawerOverlay').addEventListener('click', closeDrawer);
+$('btnManual').addEventListener('click', ()=>openDrawer('manual'));
+$('btnEnter').addEventListener('click', ()=>openDrawer('manual'));
+$('btnSim').addEventListener('click', ()=>openDrawer('sim'));
+
+$('scenarioSel').addEventListener('change', e=>{ state.scenario=e.target.value; state.driftLast=null; if(state.simRunning) startSim(); persist(); });
+$('speedSel').addEventListener('change', e=>{ state.intervalSec=Number(e.target.value); if(state.simRunning) startSim(); persist(); });
+$('btnSimToggle').addEventListener('click', ()=>{ if(state.simRunning) stopAllTimers(); else startSim(); });
+$('btnSimOnce').addEventListener('click', ()=> submitReading(simPacket(),'SIM'));
+$('btnAddReading').addEventListener('click', ()=>{
+  submitReading({ n:$('inN').value, p:$('inP').value, k:$('inK').value, m:$('inM').value, ph:$('inPH').value, t:$('inT').value }, 'MANUAL');
+  closeDrawer();
+});
+$('btnReconnect').addEventListener('click', async ()=>{ if(await checkBackend(true)) startLive(); });
+$('btnCsv').addEventListener('click', exportCSV);
+$('btnPdf').addEventListener('click', exportPDF);
+$('btnViewHistory').addEventListener('click', ()=>go('history'));
+$('btnCalibrate').addEventListener('click', ()=>toast('Sensor calibration is set via firmware constants (pH/moisture) — see ARCHITECTURE.md § Phase 7'));
+$('btnCsv2').addEventListener('click', exportCSV);
+$('btnPdf2').addEventListener('click', exportPDF);
+$('btnXlsx2').addEventListener('click', exportXLSX);
+$('btnClear').addEventListener('click', async ()=>{
+  if (!confirm('Delete all stored readings and alerts?')) return;
+  if (API.online){ try { await API.clear(); } catch(e){} }
+  state.readings = []; state.alerts = []; state.driftLast=null; state.lastId=0;
+  await store.clear();
+  $('gaugeVal').textContent='—'; $('gaugeStatus').textContent='—';
+  $('classBadge').textContent='AWAITING';
+  renderAll();
+  toast('All data cleared');
+});
+function go(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active', p.dataset.page===page));
+  document.querySelectorAll('.nav-item').forEach(b=>{
+    const active = b.dataset.page===page;
+    b.classList.toggle('active', active);
+    if (active) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
+  if (page === 'reports') loadSummary();
+  if (page === 'history' && API.online) API.devices().then(renderDeviceFilterOptions).catch(()=>{});
+}
+document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>go(b.dataset.page)));
+
+/* clock */
+setInterval(renderTopTime, 1000);
+
+/* ---------- theme ---------- */
+function applyTheme(theme){
+  if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('agrowise-theme', theme); } catch(e){}
+}
+$('themeSelect').addEventListener('change', e=>applyTheme(e.target.value));
+$('deviceFilter').addEventListener('change', renderHistoryFull);
+
+/* ---------- onboarding (first-run) ---------- */
+const ONBOARD_KEY = 'agrowise-onboarded';
+function isOnboarded(){ try { return localStorage.getItem(ONBOARD_KEY) === '1'; } catch(e){ return true; } }
+function markOnboarded(){ try { localStorage.setItem(ONBOARD_KEY, '1'); } catch(e){} }
+function showOnboarding(){ $('onboardOverlay').classList.remove('hidden'); }
+function dismissOnboarding(){ $('onboardOverlay').classList.add('hidden'); markOnboarded(); }
+$('btnOnboardConnect').addEventListener('click', ()=>{ dismissOnboarding(); go('settings'); $('apiKey').focus(); });
+$('btnOnboardDemo').addEventListener('click', dismissOnboarding);
+$('btnReplayOnboarding').addEventListener('click', showOnboarding);
+
+/* boot */
+(async function init(){
+  applyI18n();
+  $('themeSelect').value = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  initChart();
+  const saved = await store.load();
+  if (saved && saved.settings){
+    state.scenario = saved.settings.scenario || 'moderate';
+    state.intervalSec = saved.settings.intervalSec || 30;
+    $('scenarioSel').value = state.scenario;
+    const opt = [...$('speedSel').options].find(o=>+o.value===state.intervalSec);
+    if (opt) $('speedSel').value = String(state.intervalSec);
+    if (saved.settings.apiBase) $('apiBase').value = saved.settings.apiBase;
+    if (saved.settings.apiKey) $('apiKey').value = saved.settings.apiKey;
+  }
+  if (saved && saved.readings && saved.readings.length){
+    state.readings = saved.readings;
+    state.alerts = saved.alerts || [];
+  }
+  renderAll();
+  const alreadyConfigured = !!(saved && saved.settings && saved.settings.apiKey);
+  if (!isOnboarded() && !alreadyConfigured) { showOnboarding(); } else if (!isOnboarded()) { markOnboarded(); }
+  const online = await checkBackend(false);
+  if (online){ startLive(); }
+  else { toast('Backend offline — starting local simulation'); startSim(); }
+})();
+</script>
+</body>
+</html>

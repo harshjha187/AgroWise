@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run analysis engine self-test
+        run: python analysis_engine.py
+
+      - name: Run pytest suite
+        run: python -m pytest -v
+
+  frontend-syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Extract and syntax-check inline JS (web-dashboard)
+        run: |
+          python3 - "web-dashboard/index.html" <<'EOF'
+          import re
+          html = open("web-dashboard/index.html").read()
+          scripts = re.findall(r'<script>(.*?)</script>', html, re.S)
+          open('/tmp/dashboard.js', 'w').write('\n'.join(scripts))
+          EOF
+          node --check /tmp/dashboard.js
+
+      - name: Extract and syntax-check inline JS (mobile-app)
+        run: |
+          python3 - "mobile-app/index.html" <<'EOF'
+          import re
+          html = open("mobile-app/index.html").read()
+          scripts = re.findall(r'<script>(.*?)</script>', html, re.S)
+          open('/tmp/mobile.js', 'w').write('\n'.join(scripts))
+          EOF
+          node --check /tmp/mobile.js
+
+      - name: Check for duplicate element IDs
+        run: |
+          for f in web-dashboard/index.html mobile-app/index.html; do
+            dupes=$(grep -o 'id="[a-zA-Z0-9_]*"' "$f" | sort | uniq -c | sort -rn | awk '$1>1')
+            if [ -n "$dupes" ]; then
+              echo "Duplicate IDs found in $f:"
+              echo "$dupes"
+              exit 1
+            fi
+          done
+
+      - name: Check for balanced <div> tags
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+          failed = False
+          for f in ["web-dashboard/index.html", "mobile-app/index.html"]:
+              s = open(f).read()
+              opens = len(re.findall(r'<div\b', s))
+              closes = len(re.findall(r'</div>', s))
+              print(f, "opens:", opens, "closes:", closes)
+              if opens != closes:
+                  failed = True
+          sys.exit(1 if failed else 0)
+          EOF

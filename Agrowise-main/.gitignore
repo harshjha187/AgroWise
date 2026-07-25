@@ -1,0 +1,31 @@
+backend/.venv/
+backend/__pycache__/
+backend/tests/__pycache__/
+backend/.pytest_cache/
+backend/.api_key
+backend/agrowise.db
+*.pyc
+.env
+node_modules/
+.DS_Store
+
+# Capacitor native projects (deploy/NATIVE_WRAPPING.md) — keep the generated
+# project structure/config, exclude machine-specific build state and IDE junk
+ios/App/Pods/
+ios/App/build/
+ios/App/DerivedData/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/*.xcodeproj/xcuserdata/
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/.idea/
+android/*.iml
+
+# Built app packages (generated, not source)
+dist/
+
+# Claude Code personal/machine-specific settings (not project-shareable)
+.claude/settings.local.json
