@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: agrowise-backend
+    runtime: python
+    pythonVersion: 3.11
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r backend/requirements.txt
+    startCommand: gunicorn --chdir backend server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: AGROWISE_BEHIND_PROXY
+        value: "true"
+      - key: AGROWISE_API_KEY
+        sync: false
