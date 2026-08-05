@@ -494,9 +494,9 @@ try {
       <div class="device-row"><span>Status</span><b id="devStatus"><span class="dot"></span>Online</b></div>
       <div class="device-row"><span>Last update</span><b id="devLast">—</b></div>
     </div>
-    <button class="logout">
+    <button id="btnLogout" class="logout">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-      Logout
+      Disconnect
     </button>
   </aside>
 
@@ -804,6 +804,7 @@ try {
         <div class="field"><label for="apiBase">Backend URL</label><input id="apiBase" type="text" placeholder="http://localhost:5000"></div>
         <div class="field"><label for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="Paste the key server.py printed on startup"></div>
         <button class="btn-primary" type="button" id="btnReconnect">Connect / Reconnect</button>
+        <button class="btn-secondary" type="button" id="btnDisconnect" style="margin-top:12px">Disconnect</button>
         <p class="hint" id="apiStatus">Checking backend…</p>
         <p class="hint" id="apiNote">Saved backend settings are restored automatically on refresh.</p>
         <p class="hint">The ESP32 firmware POSTs to <code>/api/readings</code>. No hardware? Run <code>python simulator.py</code> from the backend folder.</p>
@@ -962,7 +963,7 @@ const CFG = {
   },
   classes: { fertile:80, moderate:50 },
   emaAlpha: 0.45, rampPower: 1.6,
-  maxStored: 500, pollSec: 3,
+  maxStored: 500, pollSec: 1,
   storageKey: 'agrowise-data-v3'
 };
 const KEYS = ['n','p','k','m','ph','t'];
@@ -1857,6 +1858,8 @@ $('btnAddReading').addEventListener('click', ()=>{
   closeDrawer();
 });
 $('btnReconnect').addEventListener('click', async ()=>{ if(await checkBackend(true)) startLive(); });
+$('btnDisconnect').addEventListener('click', disconnectBackend);
+$('btnLogout').addEventListener('click', disconnectBackend);
 $('btnCsv').addEventListener('click', exportCSV);
 $('btnPdf').addEventListener('click', exportPDF);
 $('btnViewHistory').addEventListener('click', ()=>go('history'));
