@@ -4,16 +4,20 @@ AgroWise — REST API Server (Flask + SQLite)
 IoT-Based Smart Soil Health Analysis, Barren Land Detection
 and Automated Recovery Recommendation System
 
-Run:
+Run (local development):
     pip install -r requirements.txt
     python server.py
 
-Then open:
-    Web dashboard : http://localhost:5000/
+Then open (local development):
+    Web dashboard : http://localhost:5000/  # or http://localhost:<PORT> if you set PORT
     Mobile app    : http://<your-pc-ip>:5000/mobile/   (from the phone)
 
+When deployed to Render (or another host), the app will be available at the
+service's external URL (for example: https://agrowise-backend-cktk.onrender.com/).
+Use that URL for the firmware `SERVER_URL` and for the dashboard `Backend URL`.
+
 The ESP32 firmware POSTs sensor packets to:
-    POST http://<your-pc-ip>:5000/api/readings
+    POST <backend-url>/api/readings
     body: {"n": 85, "p": 24, "k": 150, "m": 28, "ph": 6.5, "temp": 27,
            "device_id": "ESP32-01"}   # optional — defaults to "source" if omitted
 
@@ -74,14 +78,27 @@ def _load_or_create_api_key() -> str:
     env_key = os.environ.get("AGROWISE_API_KEY")
     if env_key:
         return env_key
-    if API_KEY_FILE.exists():
-        return API_KEY_FILE.read_text().strip()
-    key = secrets.token_urlsafe(32)
-    API_KEY_FILE.write_text(key)
+
     try:
-        API_KEY_FILE.chmod(0o600)
+        if API_KEY_FILE.exists():
+            return API_KEY_FILE.read_text().strip()
     except OSError:
-        pass
+        logger.warning("Could not read existing API key file %s", API_KEY_FILE)
+
+    key = secrets.token_urlsafe(32)
+    try:
+        API_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        API_KEY_FILE.write_text(key)
+        try:
+            API_KEY_FILE.chmod(0o600)
+        except OSError:
+            pass
+    except OSError:
+        logger.warning(
+            "Could not persist API key to %s; using an ephemeral key. "
+            "Set AGROWISE_API_KEY in the environment to avoid this.",
+            API_KEY_FILE,
+        )
     return key
 
 
@@ -307,11 +324,24 @@ def export_csv():
 
 # ==================================================================
 if __name__ == "__main__":
+    # Use the runtime PORT if provided (Render and many PaaS set $PORT).
+    port = int(os.environ.get("PORT", 5000))
+    host = "0.0.0.0"
+
+    # If Render provides an external URL, prefer that for printed hints.
+    external_url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("AGROWISE_PUBLIC_URL")
+    if external_url:
+        dashboard_url = external_url.rstrip('/')
+    else:
+        dashboard_url = f"http://localhost:{port}"
+
+    api_hint = f"{dashboard_url}/api/readings"
+
     print("=" * 60)
     print("  AgroWise backend v2 (with moisture)")
-    print("  Dashboard : http://localhost:5000/")
-    print("  Mobile    : http://<this-pc-ip>:5000/mobile/")
-    print("  API       : http://<this-pc-ip>:5000/api/readings")
+    print(f"  Dashboard : {dashboard_url}/")
+    print("  Mobile    : http://<this-pc-ip>:<port>/mobile/")
+    print(f"  API       : {api_hint}")
     print("-" * 60)
     print("  Every /api/* request requires header:  X-API-Key: <key>")
     print(f"  API key: {API_KEY}")
@@ -320,5 +350,7 @@ if __name__ == "__main__":
     if not ALLOWED_ORIGINS:
         print("  CORS: same-origin only. Set AGROWISE_ALLOWED_ORIGINS=https://foo,https://bar to allow others.")
     print("=" * 60)
-    # host 0.0.0.0 -> reachable by the ESP32 and phones on the same WiFi
-    app.run(host="0.0.0.0", port=5000, debug=False)
+
+    # Run the development server on the selected port (production typically
+    # uses gunicorn which will ignore this app.run invocation).
+    app.run(host=host, port=port, debug=False)
