@@ -1729,9 +1729,10 @@ $('btnReplayOnboarding').addEventListener('click', showOnboarding);
   renderAll();
   const alreadyConfigured = !!(saved && saved.settings && saved.settings.apiKey);
   if (!isOnboarded() && !alreadyConfigured) { showOnboarding(); } else if (!isOnboarded()) { markOnboarded(); }
-  const online = await checkBackend(false);
-  if (online){ startLive(); }
-  else { toast('Backend offline — starting local simulation'); startSim(); }
+  // Do not auto-check backend on startup — require the user to click Reconnect.
+  // This prevents the UI from showing "Connected" unless the user explicitly
+  // initiates a connection via the Settings -> Reconnect button.
+  $('apiStatus').textContent = 'Not connected — click Reconnect to connect to backend.';
 })();
 </script>
 </body>
