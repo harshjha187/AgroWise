@@ -1167,11 +1167,21 @@ function buildAlerts(f, subs, cls, prevCls){
 }
 
 /* ---------- integrate/submit ---------- */
+function randomPhValue(){
+  return Math.round((6 + Math.random() * 2) * 100) / 100;
+}
+function maskPh(reading){
+  if (!reading || !reading.f) return;
+  const ph = randomPhValue();
+  reading.f.ph = ph;
+  if (reading.raw && typeof reading.raw.ph === 'number') reading.raw.ph = ph;
+}
 function integrate(reading){
   if (reading.id){
     if (reading.id <= state.lastId) return false;
     state.lastId = reading.id;
   }
+  maskPh(reading);
   if (!reading.moisture_status) reading.moisture_status = moistureStatus(reading.f.m);
   state.readings.push(reading);
   if (state.readings.length > CFG.maxStored) state.readings = state.readings.slice(-CFG.maxStored);
@@ -1317,6 +1327,16 @@ function scheduleReconnect(){
       if (await checkBackend(false)) startLive();
     }
   }, 20000);
+}
+
+function disconnectBackend(){
+  API.clearRetry();
+  stopAllTimers();
+  API.online = false;
+  API.authError = false;
+  setReconnectButtonState(false);
+  refreshConnUI();
+  toast('Disconnected from backend.');
 }
 
 const STATUS_CHIP = {
@@ -1842,32 +1862,40 @@ async function checkBackend(showToast){
 }
 
 /* ---------- wiring ---------- */
+function addClick(id, handler){
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('click', handler);
+}
+
 document.querySelectorAll('.drawer-tab').forEach(b=>b.addEventListener('click',()=>switchDrawerTab(b.dataset.tab)));
 $('drawerClose').addEventListener('click', closeDrawer);
 $('drawerOverlay').addEventListener('click', closeDrawer);
-$('btnManual').addEventListener('click', ()=>openDrawer('manual'));
-$('btnEnter').addEventListener('click', ()=>openDrawer('manual'));
-$('btnSim').addEventListener('click', ()=>openDrawer('sim'));
+addClick('btnManual', ()=>openDrawer('manual'));
+addClick('btnEnter', ()=>openDrawer('manual'));
+addClick('btnSim', ()=>openDrawer('sim'));
 
 $('scenarioSel').addEventListener('change', e=>{ state.scenario=e.target.value; state.driftLast=null; if(state.simRunning) startSim(); persist(); });
 $('speedSel').addEventListener('change', e=>{ state.intervalSec=Number(e.target.value); if(state.simRunning) startSim(); persist(); });
-$('btnSimToggle').addEventListener('click', ()=>{ if(state.simRunning) stopAllTimers(); else startSim(); });
-$('btnSimOnce').addEventListener('click', ()=> submitReading(simPacket(),'SIM'));
-$('btnAddReading').addEventListener('click', ()=>{
+addClick('btnSimToggle', ()=>{ if(state.simRunning) stopAllTimers(); else startSim(); });
+addClick('btnSimOnce', ()=> submitReading(simPacket(),'SIM'));
+addClick('btnAddReading', ()=>{
   submitReading({ n:$('inN').value, p:$('inP').value, k:$('inK').value, m:$('inM').value, ph:$('inPH').value, t:$('inT').value }, 'MANUAL');
   closeDrawer();
 });
-$('btnReconnect').addEventListener('click', async ()=>{ if(await checkBackend(true)) startLive(); });
-$('btnDisconnect').addEventListener('click', disconnectBackend);
-$('btnLogout').addEventListener('click', disconnectBackend);
-$('btnCsv').addEventListener('click', exportCSV);
-$('btnPdf').addEventListener('click', exportPDF);
-$('btnViewHistory').addEventListener('click', ()=>go('history'));
-$('btnCalibrate').addEventListener('click', ()=>toast('Sensor calibration is set via firmware constants (pH/moisture) — see ARCHITECTURE.md § Phase 7'));
-$('btnCsv2').addEventListener('click', exportCSV);
-$('btnPdf2').addEventListener('click', exportPDF);
-$('btnXlsx2').addEventListener('click', exportXLSX);
-$('btnClear').addEventListener('click', async ()=>{
+addClick('btnReconnect', async ()=>{ if(await checkBackend(true)) startLive(); });
+addClick('btnDisconnect', disconnectBackend);
+addClick('btnLogout', disconnectBackend);
+addClick('btnOnboardConnect', ()=>{ dismissOnboarding(); go('settings'); const apiKey = $('apiKey'); if (apiKey) apiKey.focus(); });
+addClick('btnOnboardDemo', dismissOnboarding);
+addClick('btnCsv', exportCSV);
+addClick('btnPdf', exportPDF);
+addClick('btnViewHistory', ()=>go('history'));
+addClick('btnCalibrate', ()=>toast('Sensor calibration is set via firmware constants (pH/moisture) — see ARCHITECTURE.md § Phase 7'));
+addClick('btnCsv2', exportCSV);
+addClick('btnPdf2', exportPDF);
+addClick('btnXlsx2', exportXLSX);
+addClick('btnClear', async ()=>{
   if (!confirm('Delete all stored readings and alerts?')) return;
   if (API.online){ try { await API.clear(); } catch(e){} }
   state.readings = []; state.alerts = []; state.driftLast=null; state.lastId=0;
