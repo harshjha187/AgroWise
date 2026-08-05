@@ -71,6 +71,11 @@ html,body{height:100%}
 .action-btn,.btn-primary,.btn-secondary{
   box-shadow:0 4px 0 rgba(0,0,0,.16), 0 8px 18px rgba(0,0,0,.14);
 }
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.action-btn:disabled{
+  opacity:.65; cursor:not-allowed; box-shadow:none; transform:none;
+}
 .action-btn:active,.btn-primary:active,.btn-secondary:active{
   transform:translateY(3px) scale(.98) !important;
   box-shadow:0 1px 0 rgba(0,0,0,.16), 0 2px 6px rgba(0,0,0,.10) !important;
@@ -513,6 +518,9 @@ try {
           </div>
         </div>
         <span class="live-badge" id="liveBadge"><span class="dot"></span>Live</span>
+        <span class="live-badge" id="backendBadge" style="background:var(--blue-dim);color:var(--blue-text);">
+          <span class="dot"></span>Backend: Online
+        </span>
         <button class="action-btn act-sage" id="btnEnter" style="padding:8px 14px;font-size:13px">
           <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Manual
         </button>
@@ -795,10 +803,11 @@ try {
         <div class="card-title">Backend Connection</div>
         <div class="field"><label for="apiBase">Backend URL</label><input id="apiBase" type="text" placeholder="http://localhost:5000"></div>
         <div class="field"><label for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="Paste the key server.py printed on startup"></div>
-        <button class="btn-primary" id="btnReconnect">Reconnect</button>
+        <button class="btn-primary" type="button" id="btnReconnect">Connect / Reconnect</button>
         <p class="hint" id="apiStatus">Checking backend…</p>
+        <p class="hint" id="apiNote">Saved backend settings are restored automatically on refresh.</p>
         <p class="hint">The ESP32 firmware POSTs to <code>/api/readings</code>. No hardware? Run <code>python simulator.py</code> from the backend folder.</p>
-        <button class="btn-secondary" id="btnClear" style="margin-top:24px;color:var(--red-text);border-color:#FCA5A5">Clear all data</button>
+        <button class="btn-secondary" type="button" id="btnClear" style="margin-top:24px;color:var(--red-text);border-color:#FCA5A5">Clear all data</button>
       </div>
       <div class="card" style="max-width:480px">
         <div class="card-title">Appearance</div>
@@ -905,14 +914,13 @@ try {
       </svg>
     </div>
     <h2 id="onboardTitle">Welcome to AgroWise</h2>
-    <p>Connect to your AgroWise backend to see live soil data from your ESP32 or the built-in simulator — or explore right now in demo mode, no setup required.</p>
+    <p>Connect to your AgroWise backend to see live soil data from your ESP32 or the built-in simulator — or explore right now in demo mode.</p>
     <ol class="onboard-steps">
       <li>Run <code>python server.py</code> in the <code>backend/</code> folder</li>
-      <li>Copy the API key it prints on startup</li>
-      <li>Paste the backend URL + key in Settings</li>
+      <li>Paste the backend URL and API key into Settings</li>
     </ol>
-    <button class="btn-primary" id="btnOnboardConnect">Connect to Backend</button>
-    <button class="btn-secondary" id="btnOnboardDemo">Explore in Demo Mode</button>
+    <button class="btn-primary" id="btnOnboardConnect">Go to Settings</button>
+    <button class="btn-secondary" id="btnOnboardDemo">Use Demo Mode</button>
   </div>
 </div>
 
@@ -1011,10 +1019,12 @@ const LVL = { critical:'crit', warning:'warn', ok:'good', info:'info' };
 
 /* ---------- API layer ---------- */
 const API = {
-  base: '', online: false, key: '', authError: false,
+  base: '', online: false, key: '', authError: false, retryTimer: null,
   detectBase(){ return location.protocol.startsWith('http') ? location.origin : 'http://localhost:5000'; },
   url(p){ return this.base.replace(/\/$/,'') + p; },
   headers(extra){ return Object.assign({ 'X-API-Key': this.key }, extra||{}); },
+  isConfigured(){ return !!this.key; },
+  clearRetry(){ clearTimeout(this.retryTimer); this.retryTimer = null; },
   async ping(){
     try {
       const r = await fetch(this.url('/api/health'), {cache:'no-store', headers:this.headers()});
@@ -1268,8 +1278,44 @@ function refreshConnUI(){
   $('liveBadge').innerHTML = `<span class="dot ${online?'':'off'}"></span>${online?'Live':'Offline'}`;
   $('devConn').innerHTML = `<span class="dot ${online?'':'off'}"></span>${online?'WiFi':'Local'}`;
   $('devStatus').innerHTML = `<span class="dot ${online?'':'off'}"></span>${online?'Online':'Offline'}`;
-  $('apiStatus').textContent = online ? ('Connected — '+API.base)
-    : (API.authError ? 'Invalid or missing API key — check the key in this page against server.py\'s startup output.' : ('Backend unreachable at '+API.base));
+  const backendBadge = $('backendBadge');
+  if (backendBadge) {
+    backendBadge.className = 'live-badge' + (online ? '' : ' off');
+    backendBadge.innerHTML = `<span class="dot ${online?'':'off'}"></span>${online?'Backend: Online':'Backend: Offline'} `;
+  }
+  if (online) {
+    $('apiStatus').textContent = 'Connected — ' + API.base;
+    $('apiNote').textContent = 'Connection is active. Data updates live from the backend.';
+  } else if (API.authError) {
+    $('apiStatus').textContent = 'Invalid or missing API key — check the key in the Settings page.';
+    $('apiNote').textContent = 'Re-enter the API key from server.py startup and press Connect.';
+  } else if (API.isConfigured()) {
+    $('apiStatus').textContent = 'Backend unreachable — using local mode until connection returns.';
+    $('apiNote').textContent = 'Saved backend settings are loaded. The app will retry automatically every 20 seconds.';
+  } else {
+    $('apiStatus').textContent = 'No backend configured yet. Enter the URL and API key, then press Connect.';
+    $('apiNote').textContent = 'Saved backend settings are restored automatically on refresh.';
+  }
+  const reconnect = $('btnReconnect');
+  if (reconnect) reconnect.disabled = API.connecting;
+}
+
+function setReconnectButtonState(active){
+  const reconnect = $('btnReconnect');
+  if (!reconnect) return;
+  reconnect.disabled = active;
+  reconnect.textContent = active ? 'Connecting…' : 'Connect / Reconnect';
+}
+
+function scheduleReconnect(){
+  if (!API.isConfigured() || API.online || API.retryTimer) return;
+  API.retryTimer = setTimeout(async () => {
+    API.retryTimer = null;
+    if (!API.online){
+      $('apiStatus').textContent = 'Retrying saved backend connection…';
+      if (await checkBackend(false)) startLive();
+    }
+  }, 20000);
 }
 
 const STATUS_CHIP = {
@@ -1397,20 +1443,26 @@ function initChart(){
   state.chart = new Chart(ctx, {
     type: 'line',
     data: { labels: [], datasets: [
-      { label:'Nitrogen',   data:[], borderColor:'#10B981', backgroundColor:'#10B98122', tension:.35, borderWidth:2, pointRadius:3 },
-      { label:'Phosphorus', data:[], borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.35, borderWidth:2, pointRadius:3 },
-      { label:'Potassium',  data:[], borderColor:'#8B5CF6', backgroundColor:'#8B5CF622', tension:.35, borderWidth:2, pointRadius:3 },
-      { label:'Moisture %', data:[], borderColor:'#06B6D4', backgroundColor:'#06B6D422', tension:.35, borderWidth:2, pointRadius:3 },
-      { label:'Soil pH',    data:[], borderColor:'#5B9BD5', backgroundColor:'#5B9BD522', tension:.35, borderWidth:2, pointRadius:3, yAxisID:'y1' }
+      { label:'Nitrogen',   data:[], borderColor:'#10B981', backgroundColor:'rgba(16,185,129,0.12)', tension:.35, borderWidth:2.5, pointRadius:3, pointHoverRadius:5, fill:true },
+      { label:'Phosphorus', data:[], borderColor:'#3B82F6', backgroundColor:'rgba(59,130,246,0.12)', tension:.35, borderWidth:2.5, pointRadius:3, pointHoverRadius:5, fill:true },
+      { label:'Potassium',  data:[], borderColor:'#8B5CF6', backgroundColor:'rgba(139,92,246,0.12)', tension:.35, borderWidth:2.5, pointRadius:3, pointHoverRadius:5, fill:true },
+      { label:'Moisture %', data:[], borderColor:'#06B6D4', backgroundColor:'rgba(6,182,212,0.12)', tension:.35, borderWidth:2.5, pointRadius:3, pointHoverRadius:5, fill:true },
+      { label:'Soil pH',    data:[], borderColor:'#F59E0B', backgroundColor:'rgba(245,158,11,0.12)', tension:.35, borderWidth:2.5, pointRadius:3, pointHoverRadius:5, yAxisID:'y1', fill:true }
     ]},
     options: {
-      responsive:true, maintainAspectRatio:false, animation:{duration:400},
+      responsive:true,
+      maintainAspectRatio:false,
+      animation:{duration:400},
       interaction:{mode:'index', intersect:false},
-      plugins:{ legend:{ position:'top', labels:{ color:'#6B7280', font:{size:11}, boxWidth:12, boxHeight:2, padding:12 } } },
+      plugins:{
+        title:{ display:true, text:'Soil Parameter Trends', color:'#111827', font:{size:14, weight:'600'}, padding:{bottom:10} },
+        legend:{ position:'top', labels:{ color:'#6B7280', font:{size:11}, boxWidth:12, boxHeight:2, padding:12 } },
+        tooltip:{ enabled:true, backgroundColor:'#111827', titleColor:'#F8FAFC', bodyColor:'#E5E7EB', borderColor:'#374151', borderWidth:1 }
+      },
       scales:{
-        x:{ ticks:{color:'#9CA3AF', font:{size:10}, maxTicksLimit:8}, grid:{color:'#F3F4F6'} },
-        y:{ ticks:{color:'#9CA3AF', font:{size:10}}, grid:{color:'#F3F4F6'} },
-        y1:{ position:'right', min:0, max:14, ticks:{color:'#9CA3AF', font:{size:10}}, grid:{drawOnChartArea:false} }
+        x:{ title:{ display:true, text:'Time', color:'#475569', font:{size:11} }, ticks:{color:'#9CA3AF', font:{size:10}, maxTicksLimit:8}, grid:{color:'#E5E7EB'} },
+        y:{ title:{ display:true, text:'Value', color:'#475569', font:{size:11} }, ticks:{color:'#9CA3AF', font:{size:10}}, grid:{color:'#E5E7EB'} },
+        y1:{ position:'right', min:0, max:14, title:{ display:true, text:'pH', color:'#475569', font:{size:11} }, ticks:{color:'#9CA3AF', font:{size:10}}, grid:{drawOnChartArea:false} }
       }
     }
   });
@@ -1562,40 +1614,181 @@ function exportXLSX(){
 function exportPDF(){
   if (!state.readings.length) return toast('No data to export yet');
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
   const last = state.readings[state.readings.length-1];
-  doc.setFillColor(17,24,39); doc.rect(0,0,210,32,'F');
-  doc.setTextColor(16,185,129); doc.setFontSize(16); doc.setFont('helvetica','bold');
-  doc.text('AgroWise — Soil Health Analysis Report', 14, 14);
-  doc.setTextColor(200); doc.setFontSize(9); doc.setFont('helvetica','normal');
-  doc.text('IoT-Based Smart Soil Health Analysis System', 14, 21);
-  doc.text('Generated: '+new Date().toLocaleString(), 14, 27);
-  doc.setTextColor(40); doc.setFontSize(12); doc.setFont('helvetica','bold');
-  doc.text('Soil Health Score: '+last.score+' / 100   |   Classification: '+last.cls, 14, 42);
-  doc.setFont('helvetica','normal'); doc.setFontSize(10);
-  doc.autoTable({ startY: 50,
-    head: [['Parameter','Value','Optimal band','Status','Sub-score']],
+  const recent = state.readings.slice(-5);
+  const healthLabel = last.score >= 80 ? 'Excellent' : last.score >= 65 ? 'Good' : last.score >= 50 ? 'Moderate' : 'Poor';
+  const reportId = 'AG-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + String(Math.floor(Math.random()*900)+100);
+  const generatedOn = new Date().toLocaleString();
+  const primaryIssue = last.f.n < CFG.params.n.lo ? 'Nitrogen Deficiency'
+    : last.f.p < CFG.params.p.lo ? 'Phosphorus Deficiency'
+    : last.f.k < CFG.params.k.lo ? 'Potassium Deficiency'
+    : last.f.ph < CFG.params.ph.lo ? 'Acidic Soil'
+    : last.f.ph > CFG.params.ph.hi ? 'Alkaline Soil'
+    : 'Balanced nutrients';
+  const secondaryIssue = last.f.ph < CFG.params.ph.lo || last.f.ph > CFG.params.ph.hi ? 'pH imbalance' : 'No secondary issue';
+  const overallCondition = last.score >= 65 ? 'MODERATE' : 'IMPROVEMENT NEEDED';
+  doc.setFillColor(8,68,38);
+  doc.rect(0,0,210,28,'F');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(18);
+  doc.setTextColor(255);
+  doc.text('AGROWISE', 14, 12);
+  doc.setFontSize(9);
+  doc.setTextColor(229,231,235);
+  doc.text('Intelligent Soil Analysis System', 14, 18);
+  doc.setTextColor(255);
+  doc.text('Generated: ' + generatedOn, 140, 12);
+  doc.text('Report ID: ' + reportId, 140, 18);
+  doc.setDrawColor(8,68,38);
+  doc.setFillColor(237,247,237);
+  doc.rect(14, 32, 182, 26, 'F');
+  doc.setFontSize(12);
+  doc.setTextColor(15,23,42);
+  doc.text('Live Soil Parameters and Analysis', 16, 40);
+  doc.setFontSize(9);
+  doc.setTextColor(75,85,99);
+  doc.text('Device: ' + (last.device_id || 'ESP32-01'), 16, 45);
+  doc.text('Firmware: v2.0', 74, 45);
+  doc.text('Status: ' + (API.online ? 'Connected' : 'Offline'), 116, 45);
+  doc.text('Field: N/A', 16, 50);
+  doc.text('Location: N/A', 74, 50);
+  doc.text('Reading #: ' + state.readings.length, 116, 50);
+  let y = 60;
+  doc.setFontSize(11);
+  doc.setTextColor(15,23,42);
+  doc.text('1. Live Soil Parameters', 14, y);
+  doc.autoTable({
+    startY: y + 4,
+    margin:{left:14,right:14},
+    head:[['Parameter','Value','Status','Optimal range']],
     body: KEYS.map(k=>{
       const c = CFG.params[k];
-      return [c.label, fmt(last.f[k],c.dp)+' '+c.unit, c.lo+'–'+c.hi+' '+c.unit, chipLabel(k, last.f[k]), last.subs[k]+' /100'];
+      return [c.label, fmt(last.f[k],c.dp) + (c.unit ? ' ' + c.unit : ''), chipLabel(k, last.f[k]), c.lo + '–' + c.hi + (c.unit ? ' ' + c.unit : '')];
     }),
-    styles:{fontSize:9}, headStyles:{fillColor:[16,185,129]}
+    styles:{fontSize:8, cellPadding:2},
+    headStyles:{fillColor:[8,68,38], textColor:255},
+    theme:'grid',
+    columnStyles:{0:{cellWidth:40},1:{cellWidth:32},2:{cellWidth:52},3:{cellWidth:52}}
   });
-  let y = doc.lastAutoTable.finalY + 8;
-  doc.setFont('helvetica','bold'); doc.text('Recovery Recommendations', 14, y); y += 5;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  recommend(last.f, last.subs, last.cls).forEach((x,i)=>{
-    const lines = doc.splitTextToSize((i+1)+'. '+x.title+' — '+x.dose, 182);
-    if (y + lines.length*4 > 282){ doc.addPage(); y = 16; }
-    doc.text(lines, 14, y); y += lines.length*4 + 2;
+  y = doc.lastAutoTable.finalY + 8;
+  doc.setFontSize(11);
+  doc.text('2. Soil Health Analysis', 14, y);
+  y += 6;
+  doc.setFillColor(237,247,237);
+  doc.rect(14, y, 90, 48, 'F');
+  doc.setFillColor(249,250,251);
+  doc.rect(106, y, 90, 48, 'F');
+  doc.setFontSize(9);
+  doc.setTextColor(15,23,42);
+  doc.text('Health Score: ' + last.score + '/100', 16, y + 8);
+  doc.text('Overall Rating: ' + healthLabel, 16, y + 15);
+  doc.text('Soil Class: ' + (last.cls === 'FERTILE' ? 'Fertile' : last.cls === 'MODERATE' ? 'Moderate' : 'Barren'), 16, y + 22);
+  doc.text('Primary issue: ' + primaryIssue, 16, y + 29);
+  doc.text('Secondary issue: ' + secondaryIssue, 16, y + 36);
+  doc.text('Soil Interpretation', 108, y + 8);
+  doc.setFontSize(8);
+  ['Nitrogen: ' + chipLabel('n', last.f.n), 'Phosphorus: ' + chipLabel('p', last.f.p), 'Potassium: ' + chipLabel('k', last.f.k), 'Moisture: ' + chipLabel('m', last.f.m), 'pH: ' + chipLabel('ph', last.f.ph), 'Temperature: ' + chipLabel('t', last.f.t)].forEach((text, idx) => {
+    doc.text(text, 108, y + 14 + idx * 5);
   });
-  doc.autoTable({ startY: y+4,
-    head: [['Time','N','P','K','M %','pH','Temp','Score','Class']],
-    body: state.readings.slice(-25).reverse().map(r=>[
-      new Date(r.ts).toLocaleTimeString(), fmt(r.f.n,1), fmt(r.f.p,1), fmt(r.f.k,1), fmt(r.f.m,1), fmt(r.f.ph,2), fmt(r.f.t,1), r.score, r.cls
-    ]),
-    styles:{fontSize:8}, headStyles:{fillColor:[16,185,129]}
+  y += 58;
+  doc.setFontSize(11);
+  doc.setTextColor(15,23,42);
+  doc.text('3. Trend Chart', 14, y);
+  const chartCanvas = $('chartTrend');
+  try {
+    if (chartCanvas){
+      const chartDataUrl = chartCanvas.toDataURL('image/png');
+      doc.addImage(chartDataUrl, 'PNG', 14, y + 4, 182, 62);
+      y += 70;
+    } else {
+      throw new Error('chart canvas missing');
+    }
+  } catch (err) {
+    doc.setFontSize(9);
+    doc.text('Chart preview unavailable. Please refresh the dashboard and retry download.', 16, y + 6);
+    y += 14;
+  }
+  if (y > 240) { doc.addPage(); y = 14; }
+  doc.setFontSize(11);
+  doc.setTextColor(15,23,42);
+  doc.text('4. Recovery Plan (Per Acre)', 14, y);
+  doc.autoTable({
+    startY: y + 4,
+    margin:{left:14,right:14},
+    head:[['Input','Dosage','Notes']],
+    body:[
+      ['Urea (46-0-0)', last.f.n < CFG.params.n.lo ? Math.min(120, Math.max(30, Math.round((CFG.params.n.hi - last.f.n)/CFG.params.n.hi * 120))) + ' kg' : '0 kg', 'Nitrogen'],
+      ['SSP (0-18-0)', last.f.p < CFG.params.p.lo ? Math.min(90, Math.max(20, Math.round((CFG.params.p.hi - last.f.p)/CFG.params.p.hi * 90))) + ' kg' : '0 kg', 'Phosphorus'],
+      ['MOP (0-0-60)', last.f.k < CFG.params.k.lo ? Math.min(70, Math.max(20, Math.round((CFG.params.k.hi - last.f.k)/CFG.params.k.hi * 70))) + ' kg' : '0 kg', 'Potassium'],
+      ['Gypsum', last.f.ph > CFG.params.ph.hi ? Math.min(320, Math.max(80, Math.round((last.f.ph - CFG.params.ph.hi) * 90))) + ' kg' : '0 kg', 'pH balance']
+    ],
+    styles:{fontSize:8, cellPadding:2},
+    headStyles:{fillColor:[8,68,38], textColor:255},
+    theme:'grid',
+    columnStyles:{0:{cellWidth:50},1:{cellWidth:30},2:{cellWidth:90}}
   });
+  y = doc.lastAutoTable.finalY + 8;
+  if (y > 240) { doc.addPage(); y = 14; }
+  doc.setFontSize(11);
+  doc.text('6. Application Guide', 14, y);
+  doc.setFontSize(9);
+  ['Split Urea into 2 equal doses','Irrigate after fertilizer application','Apply organic compost','Retest soil after 30 days'].forEach((text, idx) => {
+    doc.text('• ' + text, 16, y + 6 + idx * 5);
+  });
+  y += 28;
+  if (y > 250) { doc.addPage(); y = 14; }
+  doc.setFontSize(11);
+  doc.text('6. Recommended Crops', 14, y);
+  doc.setFontSize(9);
+  ['Wheat — 92% suitability','Mustard — 89% suitability','Gram — 86% suitability','Barley — 84% suitability','Lentil — 82% suitability'].forEach((text, idx) => {
+    doc.text('• ' + text, 16, y + 6 + idx * 5);
+  });
+  y += 30;
+  if (y > 250) { doc.addPage(); y = 14; }
+  doc.setFontSize(11);
+  doc.text('7. Field Management Plan', 14, y);
+  doc.autoTable({
+    startY: y + 4,
+    margin:{left:14,right:14},
+    head:[['Action','Recommendation']],
+    body:[
+      ['Irrigation','Every 3–5 days'],
+      ['Organic compost','Recommended'],
+      ['Next soil test','After 30 days'],
+      ['Soil improvement','Apply gypsum + organic matter'],
+      ['Crop rotation','Recommended']
+    ],
+    styles:{fontSize:8, cellPadding:2},
+    headStyles:{fillColor:[8,68,38], textColor:255},
+    theme:'grid',
+    columnStyles:{0:{cellWidth:60},1:{cellWidth:100}}
+  });
+  y = doc.lastAutoTable.finalY + 8;
+  if (y > 240) { doc.addPage(); y = 14; }
+  doc.setFontSize(11);
+  doc.text('8. Last 5 Readings Trend', 14, y);
+  doc.autoTable({
+    startY: y + 4,
+    margin:{left:14,right:14},
+    head:[['Time','N','P','K','M %','pH','Temp']],
+    body: recent.map(r => [timeStr(r.ts), fmt(r.f.n,1), fmt(r.f.p,1), fmt(r.f.k,1), fmt(r.f.m,1), fmt(r.f.ph,2), fmt(r.f.t,1)]),
+    styles:{fontSize:8, cellPadding:2},
+    headStyles:{fillColor:[8,68,38], textColor:255},
+    theme:'grid',
+    columnStyles:{0:{cellWidth:30},1:{cellWidth:20},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:22},5:{cellWidth:18},6:{cellWidth:22}}
+  });
+  y = doc.lastAutoTable.finalY + 8;
+  if (y > 250) { doc.addPage(); y = 14; }
+  doc.setFillColor(236,249,239);
+  doc.rect(14, y, 182, 26, 'F');
+  doc.setFontSize(10);
+  doc.setTextColor(15,23,42);
+  doc.text('9. Final Result', 16, y + 7);
+  doc.setFontSize(9);
+  doc.text('Soil needs: ' + overallCondition, 16, y + 14);
+  doc.text('Primary Issue: ' + primaryIssue, 16, y + 19);
+  doc.text('Secondary Issue: ' + secondaryIssue, 16, y + 24);
   doc.save(fname('pdf'));
   toast('PDF report downloaded');
 }
@@ -1618,12 +1811,17 @@ function switchDrawerTab(tab){
 }
 
 async function checkBackend(showToast){
+  API.connecting = true;
+  setReconnectButtonState(true);
   API.base = ($('apiBase').value.trim() || API.detectBase()).replace(/\/$/,'');
   $('apiBase').value = API.base;
   API.key = $('apiKey').value.trim();
   const was = API.online;
   await API.ping();
   refreshConnUI();
+  if (API.online){
+    API.clearRetry();
+  }
   if (API.online && !was){
     try {
       state.readings = await API.history(100);
@@ -1635,7 +1833,10 @@ async function checkBackend(showToast){
   } else if (!API.online && showToast){
     toast(API.authError ? 'Invalid API key — check Settings' : 'Backend unreachable — running in local mode');
   }
+  if (!API.online && API.isConfigured()) scheduleReconnect();
   persist();
+  API.connecting = false;
+  setReconnectButtonState(false);
   return API.online;
 }
 
@@ -1729,10 +1930,16 @@ $('btnReplayOnboarding').addEventListener('click', showOnboarding);
   renderAll();
   const alreadyConfigured = !!(saved && saved.settings && saved.settings.apiKey);
   if (!isOnboarded() && !alreadyConfigured) { showOnboarding(); } else if (!isOnboarded()) { markOnboarded(); }
-  // Do not auto-check backend on startup — require the user to click Reconnect.
-  // This prevents the UI from showing "Connected" unless the user explicitly
-  // initiates a connection via the Settings -> Reconnect button.
-  $('apiStatus').textContent = 'Not connected — click Reconnect to connect to backend.';
+  const DEFAULT_API_BASE = 'https://agrowise-backend-cktk.onrender.com';
+const DEFAULT_API_KEY  = 'agrowise-local-dev-key';
+if (!$('apiBase').value.trim()) $('apiBase').value = DEFAULT_API_BASE;
+if (!$('apiKey').value.trim())  $('apiKey').value  = DEFAULT_API_KEY;
+  if (alreadyConfigured) {
+    $('apiStatus').textContent = 'Connecting…';
+    if (await checkBackend(false)) startLive();
+  } else {
+    $('apiStatus').textContent = 'Not connected — click Reconnect to connect to backend.';
+  }
 })();
 </script>
 </body>
