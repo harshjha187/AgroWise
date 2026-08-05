@@ -399,6 +399,18 @@ table.readings .col-t  {color:var(--orange-text);font-weight:600}
 #toast.show{transform:translateX(-50%) translateY(0)}
 #toast:empty{visibility:hidden}
 
+/* ESP connection modal */
+#espModalOverlay{position:fixed;inset:0;background:rgba(1,1,1,0.45);display:none;align-items:center;justify-content:center;z-index:220}
+#espModalOverlay.open{display:flex}
+#espModal{background:var(--panel);padding:18px 20px;border-radius:12px;max-width:360px;width:92%;box-shadow:var(--shadow-lg);text-align:center}
+#espModal h3{margin-bottom:8px;font-size:17px}
+#espModal p{color:var(--muted);margin-bottom:14px}
+#espModal .esp-actions{display:flex;gap:10px;justify-content:center}
+#espModal .esp-actions button{padding:10px 14px;border-radius:8px;font-weight:600}
+#espModal .close-btn{background:var(--panel);border:1px solid var(--line);color:var(--text)}
+#espModal .ok-btn{background:var(--sage);color:#fff}
+
+
 /* responsive */
 @media (max-width: 1200px){
   .stat-row{grid-template-columns:repeat(3,1fr)}
@@ -902,6 +914,18 @@ try {
 
 <div id="toast" role="status"></div>
 
+<!-- ESP connection modal -->
+<div id="espModalOverlay" role="dialog" aria-modal="true">
+  <div id="espModal">
+    <h3 id="espModalTitle">ESP Device Connected</h3>
+    <p id="espModalMsg">Device is now reporting live data.</p>
+    <div class="esp-actions">
+      <button class="close-btn" id="espModalClose">Dismiss</button>
+      <button class="ok-btn" id="espModalView">View Live</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== ONBOARDING (first-run) ==================== -->
 <div class="onboard-overlay hidden" id="onboardOverlay" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
   <div class="onboard-card">
@@ -982,7 +1006,8 @@ const state = {
   readings: [], alerts: [],
   scenario: 'moderate', intervalSec: 30, simRunning: false,
   simTimer: null, liveTimer: null,
-  lastId: 0, driftLast: null, chart: null
+  lastId: 0, driftLast: null, chart: null,
+  espSeen: false
 };
 
 /* ---------- helpers ---------- */
@@ -990,6 +1015,21 @@ const $ = id => document.getElementById(id);
 const fmt = (v,dp=1) => (v===null||v===undefined||isNaN(v)) ? '—' : Number(v).toFixed(dp);
 const timeStr = ts => new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2500); }
+
+/* show a one-time ESP-connected modal */
+function showESPPopup(name){
+  const overlay = $('espModalOverlay');
+  if (!overlay) return;
+  const title = $('espModalTitle');
+  const msg = $('espModalMsg');
+  title.textContent = name + ' connected';
+  msg.textContent = name + ' is now reporting live data to the dashboard.';
+  overlay.classList.add('open');
+}
+function hideESPPopup(){ const overlay = $('espModalOverlay'); if (overlay) overlay.classList.remove('open'); }
+addClick('espModalClose', hideESPPopup);
+addClick('espModalView', ()=>{ hideESPPopup(); go('live'); });
+
 const LVL = { critical:'crit', warning:'warn', ok:'good', info:'info' };
 
 /* ---------- 3D mouse-tracked tilt ---------- */
@@ -1183,6 +1223,20 @@ function integrate(reading){
   }
   maskPh(reading);
   if (!reading.moisture_status) reading.moisture_status = moistureStatus(reading.f.m);
+
+  // Detect ESP device first-seen and show popup only when backend is online
+  try {
+    const src = (reading.source || '').toString().toLowerCase();
+    const isSim = src.includes('sim');
+    const hasDeviceId = !!(reading.device_id && reading.device_id !== 'local');
+    if (!state.espSeen && hasDeviceId && !isSim && API.online){
+      state.espSeen = true;
+      const name = reading.device_id || 'ESP device';
+      const es = $('espStatus'); if (es) es.innerHTML = `<span class="dot"></span>${name} connected`;
+      showESPPopup(name);
+    }
+  } catch(e){ /* ignore */ }
+
   state.readings.push(reading);
   if (state.readings.length > CFG.maxStored) state.readings = state.readings.slice(-CFG.maxStored);
   renderAll();
@@ -1336,6 +1390,10 @@ function disconnectBackend(){
   API.authError = false;
   setReconnectButtonState(false);
   refreshConnUI();
+  // clear any ESP-connected indicator
+  state.espSeen = false;
+  const es = $('espStatus'); if (es) es.textContent = '—';
+  hideESPPopup();
   toast('Disconnected from backend.');
 }
 
@@ -1850,6 +1908,16 @@ async function checkBackend(showToast){
       state.alerts = (await API.alerts(30)).map(a=>({ts:a.ts, lvl:LVL[a.level]||'warn', msg:a.message}));
       renderAll();
       if (showToast) toast('Connected — loaded '+state.readings.length+' readings');
+      // If backend just connected and an ESP device already reported earlier, show popup once
+      if (!state.espSeen && state.readings && state.readings.length){
+        const lastDevice = state.readings.slice().reverse().find(r=> (r.device_id && r.device_id !== 'local') && !((r.source||'').toString().toLowerCase().includes('sim')) );
+        if (lastDevice){
+          state.espSeen = true;
+          const name = lastDevice.device_id || 'ESP device';
+          const es = $('espStatus'); if (es) es.innerHTML = `<span class="dot"></span>${name} connected`;
+          showESPPopup(name);
+        }
+      }
     } catch(e){}
   } else if (!API.online && showToast){
     toast(API.authError ? 'Invalid API key — check Settings' : 'Backend unreachable — running in local mode');
